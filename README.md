@@ -1,4 +1,3 @@
-
 ## Prerequisites
 
 - Python 3.10+
@@ -11,8 +10,8 @@
 1) Clone and enter the repo
 
 ```bash
-git clone https://github.com/HugoPodworski/first-pipecat-agent.git
-cd first-pipecat-agent
+git clone https://github.com/sukanya1426/Voice_Agent.git
+cd Voice_Agent
 ```
 
 2) Create `.env` and add your API keys
