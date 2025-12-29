@@ -1,9 +1,9 @@
 ## Prerequisites
 
-- Python 3.10+
-- [ngrok](https://ngrok.com/docs/getting-started/) (for tunneling)
-- [Twilio Account](https://www.twilio.com/login) and [phone number](https://help.twilio.com/articles/223135247-How-to-Search-for-and-Buy-a-Twilio-Phone-Number-from-Console)
-- AI Service API keys for: [Deepgram](https://console.deepgram.com/signup), [OpenAI](https://auth.openai.com/create-account), and [Cartesia](https://play.cartesia.ai/sign-up)
+- Node.js 16+
+- [ngrok](https://ngrok.com/docs/getting-started/) (for TCP tunneling)
+- [Fonoster Account](https://console.fonoster.com/) and phone number
+- AI Service API keys for: [Deepgram](https://console.deepgram.com/signup), [OpenAI](https://auth.openai.com/create-account), or [Cerebras](https://inference.cerebras.ai/)
 
 ## Quick Start
 
@@ -17,115 +17,135 @@ cd Voice_Agent
 2) Create `.env` and add your API keys
 
 ```bash
-cp env.example .env
+cp .env.example .env
 ```
 
 ```bash
 # Fill in .env with your keys:
-# DEEPGRAM_API_KEY=...
-# CARTESIA_API_KEY=...
-# CEREBRAS_API_KEY=...   # or OPENAI_API_KEY if you switch models
-# TWILIO_ACCOUNT_SID=...
-# TWILIO_AUTH_TOKEN=...
+# FONOSTER_API_KEY=...
+# FONOSTER_API_SECRET=...
+# FONOSTER_ACCESS_KEY_ID=...
+# FONOSTER_APP_REF=...
+# OPENAI_API_KEY=... (or CEREBRAS_API_KEY)
 ```
 
 3) Install dependencies
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+npm install
 ```
 
-4) Run the helper to start ngrok and configure Twilio
+4) Run the helper to start ngrok TCP tunnel and your Voice Application
 
 ```bash
-python setup_ngrok_twilio.py
+node fonoster_setup.js
 ```
 
-- Choose which Twilio number to use.
-- The helper starts ngrok, updates your Twilio webhook, and prints a command to run the bot with the correct `--proxy` (ngrok host).
-- It also prints a command you can use to place an outbound call.
+- The helper starts ngrok TCP tunnel on port 50061
+- Launches your Fonoster Voice Application server
+- Displays setup instructions and ngrok URL
 
-5) In a new terminal, run the bot command from the helper output
+5) Deploy to Fonoster and configure
 
-```bash
-python bot.py --transport twilio --proxy <ngrok-host>
-```
+- Deploy your Voice Application to Fonoster Console
+- Get your `FONOSTER_APP_REF` and update `.env`
+- Configure your Fonoster phone number to use your deployed app
 
-Inbound calls to your Twilio number will now connect to the bot.
-
-For outbound calls, run the printed command, for example:
+For outbound calls:
 
 ```bash
-python outbound.py --to +15551234567 --from +15557654321 --proxy <ngrok-host>
+node fonoster_outbound.js --to +15551234567 --from +YOUR_FONOSTER_NUMBER
 ```
 
 ### Test Your Phone Bot
 
-**Call your Twilio phone number** to start talking with your AI bot! 🚀
+**Call your Fonoster phone number** to start talking with your AI bot! 🚀
 
-> 💡 **Tip**: Check your server terminal for debug logs showing Pipecat's internal workings.
+> 💡 **Tip**: Check your terminal for debug logs showing your Voice Application's conversation flow.
 
 ## Troubleshooting
 
-- **Call doesn't connect**: Verify your ngrok URL is correctly set in the Twilio webhook
+- **Call doesn't connect**: Verify your Voice Application is deployed and configured in Fonoster Console
 - **No audio or bot doesn't respond**: Check that all API keys are correctly set in your `.env` file
-- **Webhook errors**: Ensure your server is running and ngrok tunnel is active before making calls
-- **ngrok tunnel issues**: Free ngrok URLs change each restart - remember to update Twilio
+- **Voice Application errors**: Ensure your Node.js server is running and ngrok TCP tunnel is active
+- **ngrok tunnel issues**: Free ngrok URLs change each restart - redeploy your Voice Application with new URL
+- **SDK errors**: Check your Fonoster API credentials and ensure your account has sufficient credits
 
 ## Understanding the Call Flow
 
-1. **Incoming Call**: User dials your Twilio number
-2. **Webhook**: Twilio sends call data to your ngrok URL
-3. **WebSocket**: Your server establishes real-time audio connection via Websocket and exchanges Media Streams with Twilio
-4. **Processing**: Audio flows through your Pipecat Pipeline
-5. **Response**: Synthesized speech streams back to caller
+1. **Incoming Call**: User dials your Fonoster number
+2. **Voice Application**: Fonoster routes call to your deployed Voice Application
+3. **TCP Connection**: Your local server (via ngrok) handles the call flow
+4. **AI Processing**: Speech-to-text → AI response → Text-to-speech
+5. **Response**: Synthesized speech streams back to caller through Fonoster
 
-## Outbound calls (Twilio → phone)
+## Outbound calls (Fonoster → phone)
 
-You can also place outbound calls that connect the callee to your running Pipecat bot.
+You can place outbound calls that connect the callee to your running Voice Application.
 
 Prereqs:
-- Your server must be running locally: `python bot.py --transport twilio --proxy your_ngrok.ngrok.io`
-- Your ngrok tunnel must be active and public (same host you pass via `--proxy`)
-- `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` set in your environment
-- A Twilio phone number to place calls from
+- Your Voice Application must be deployed to Fonoster
+- Your local server can be running for development: `node fonoster_bot.js`
+- `FONOSTER_API_KEY`, `FONOSTER_API_SECRET`, `FONOSTER_ACCESS_KEY_ID` set in your environment
+- A Fonoster phone number to place calls from
 
 Make the call:
 
 ```bash
-python outbound.py --to +15551234567 --from +15557654321 --proxy your_ngrok.ngrok.io
+node fonoster_outbound.js --to +15551234567 --from +YOUR_FONOSTER_NUMBER
 ```
 
 Notes:
-- The script sends Twilio to `https://<proxy>/` with HTTP POST. The Pipecat runner responds with the XML that instructs Twilio to open a Media Streams WebSocket to `wss://<proxy>/ws`.
-- You can override the webhook URL directly with `--url https://example.com/` if you host the runner elsewhere.
+- The script uses Fonoster SDK to initiate calls
+- The `appRef` in your `.env` determines which Voice Application handles the call
+- You can pass metadata to your Voice Application through the call request
 
-## Auto-configure Twilio + ngrok
+## Development Setup with ngrok
 
-Use this helper to:
-- Start an ngrok tunnel
-- Pick which Twilio number to configure
-- Set "A call comes in" webhook to your ngrok URL (HTTP POST)
-- Optionally set "Primary handler fails" to the same URL
-- Optionally write `PIPECAT_PROXY_HOST` to `.env`
+Use this helper to set up your local development environment:
 
 ```bash
-# Persistent tunnel by default; choose number interactively
-python setup_ngrok_twilio.py
-
-# Or pick a specific number and auto-launch the bot
-python setup_ngrok_twilio.py --to +15551234567 --launch-bot
+node fonoster_setup.js
 ```
 
-Environment:
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` required
-- `NGROK_AUTHTOKEN` recommended for reliability
-- `NGROK_REGION` optional (e.g. `us`)
+This will:
+- Start an ngrok TCP tunnel on port 50061
+- Launch your Voice Application server locally
+- Display the public TCP URL for Fonoster configuration
+- Keep the tunnel active for development
 
-After it prints the public URL, start the bot in another terminal (if you didn't use --launch-bot):
-
+Options:
 ```bash
-python bot.py --transport twilio --proxy <ngrok-host>
+# Custom port
+node fonoster_setup.js --port 8080
+
+# Don't start the Voice Application automatically  
+node fonoster_setup.js --no-start-app
+
+# Exit after setup (don't keep tunnel running)
+node fonoster_setup.js --no-keep-running
 ```
+
+For production deployment, you'll want to:
+1. Deploy your Voice Application directly to Fonoster's platform
+2. Use Fonoster Console to configure your phone numbers
+3. Set up proper authentication and scaling
+
+Environment variables needed:
+- `FONOSTER_API_KEY`, `FONOSTER_API_SECRET`, `FONOSTER_ACCESS_KEY_ID` - from Fonoster Console
+- `FONOSTER_APP_REF` - your deployed Voice Application reference
+- `OPENAI_API_KEY` or `CEREBRAS_API_KEY` - for AI responses
+- `NGROK_AUTHTOKEN` - recommended for stable tunnels during development
+
+## Voice Application Features
+
+Your Fonoster Voice Application (`fonoster_bot.js`) includes:
+
+- **Restaurant Receptionist**: Handles calls for "The Salusbury" restaurant  
+- **Reservation System**: Collects date, time, and party size for bookings
+- **AI Conversation**: Natural language processing with OpenAI/Cerebras
+- **Speech Recognition**: Built-in speech-to-text via Fonoster
+- **Conversation Memory**: Maintains context throughout the call
+- **Graceful Handling**: Manages silence, errors, and call termination
+
+The bot can handle both inbound calls (customers calling in) and outbound calls (calling customers back).
