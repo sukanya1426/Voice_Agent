@@ -1,0 +1,11 @@
+# Fonoster dependencies
+@fonoster/voice
+@fonoster/sdk
+# AI services (keeping the same ones)
+loguru
+python-dotenv
+# For speech processing (if you want to keep using these)
+deepgram
+openai
+# For ngrok tunneling
+pyngrok

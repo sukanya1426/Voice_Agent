@@ -1,3 +1,44 @@
+# Sigmoix AI Voice Agent
+
+An intelligent voice assistant for product inquiries with a beautiful web interface and powerful voice AI backend.
+
+## 🏗️ Architecture
+
+```
+Voice_Agent/
+├── Frontend/           # Web interface with talk-to-agent functionality
+│   ├── index.html     # Main web application
+│   ├── styles.css     # Modern responsive styling  
+│   └── script.js      # Frontend interaction logic
+├── Backend/           # Voice agent server and API
+│   ├── fonoster_bot.js      # Main voice application (Fonoster)
+│   ├── api-server.js        # Express API server for frontend
+│   ├── fonoster_setup.js    # Development setup helper
+│   ├── fonoster_outbound.js # Outbound call scripts
+│   ├── products_merged.csv  # Product database
+│   ├── .env                 # Environment variables
+│   └── package.json         # Dependencies and scripts
+└── README.md          # This file
+```
+
+## ✨ Features
+
+### Frontend (Web Interface)
+- **Modern UI**: Clean, responsive design inspired by ElevenLabs
+- **Talk to Agent Button**: One-click access to voice assistant
+- **Interactive Modal**: Popup interface for initiating calls
+- **Real-time Status**: Connection status and call progress
+- **Product Demo**: Interactive chat preview
+- **Mobile Responsive**: Works on all devices
+
+### Backend (Voice Agent)
+- **Product Inquiry Assistant**: Searches CSV database of technology products
+- **Natural Language AI**: OpenAI/Cerebras integration for conversational responses
+- **Fonoster Integration**: Professional telephony via Fonoster platform
+- **CSV Product Database**: Extensive product catalog with pricing and specs
+- **REST API**: Express server for frontend-backend communication
+- **Call Management**: Inbound and outbound call handling
+
 ## Prerequisites
 
 - Node.js 16+
@@ -141,9 +182,10 @@ Environment variables needed:
 
 Your Fonoster Voice Application (`fonoster_bot.js`) includes:
 
-- **Restaurant Receptionist**: Handles calls for "The Salusbury" restaurant  
-- **Reservation System**: Collects date, time, and party size for bookings
-- **AI Conversation**: Natural language processing with OpenAI/Cerebras
+- **Product Inquiry Assistant**: Handles calls for Sigmoix AI product inquiries
+- **CSV Product Database**: Searches through products_merged.csv containing technology products
+- **Product Search**: Finds products by name, category, brand, features, or specifications
+- **AI Conversation**: Natural language processing with OpenAI/Cerebras for intelligent responses
 - **Speech Recognition**: Built-in speech-to-text via Fonoster
 - **Conversation Memory**: Maintains context throughout the call
 - **Graceful Handling**: Manages silence, errors, and call termination
