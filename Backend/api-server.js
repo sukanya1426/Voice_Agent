@@ -13,8 +13,16 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Configure Fonoster SDK with environment variables
+const fonosterConfig = {
+    accessKeyId: process.env.FONOSTER_ACCESS_KEY_ID,
+    accessKeySecret: process.env.FONOSTER_API_SECRET,
+    endpoint: "https://api.fonoster.com/v1beta2"
+};
+
 // Import Fonoster SDK for outbound calls
 const SDK = require("@fonoster/sdk");
+const { CallsApi } = SDK;
 
 // Middleware
 app.use(cors());
@@ -36,24 +44,28 @@ app.get('/api/health', (req, res) => {
 // Initiate call endpoint
 app.post('/api/initiate-call', async (req, res) => {
     try {
-        const { to, from } = req.body;
+        const { phoneNumber } = req.body;
         
         // Validate request
-        if (!to || !from) {
+        if (!phoneNumber) {
             return res.status(400).json({
-                error: 'Both "to" and "from" phone numbers are required'
+                error: 'Phone number is required'
             });
         }
         
-        // Validate phone number format (basic E.164 validation)
+        // Clean and validate phone number format (basic E.164 validation)
+        const cleanPhoneNumber = phoneNumber.trim();
         const e164Regex = /^\+[1-9]\d{1,14}$/;
-        if (!e164Regex.test(to) || !e164Regex.test(from)) {
+        if (!e164Regex.test(cleanPhoneNumber)) {
             return res.status(400).json({
-                error: 'Phone numbers must be in E.164 format (e.g., +1234567890)'
+                error: 'Phone number must be in E.164 format (e.g., +1234567890)'
             });
         }
         
-        console.log(`📞 Initiating call from ${from} to ${to}...`);
+        // Use a default FROM number (your Fonoster number)
+        const fromNumber = "+16592468685"; // Your Fonoster number
+        
+        console.log(`📞 Initiating call from ${fromNumber} to ${cleanPhoneNumber}...`);
         
         // Initialize Fonoster client
         const apiKey = process.env.FONOSTER_API_KEY;
@@ -74,24 +86,24 @@ app.post('/api/initiate-call', async (req, res) => {
         }
         
         // Create and authenticate Fonoster client
-        const client = new SDK.Client({ accessKeyId });
+        const client = new SDK.Client(fonosterConfig);
         await client.loginWithApiKey(apiKey, apiSecret);
         
         // Prepare call request
         const callRequest = {
-            from: from,
-            to: to,
+            from: fromNumber,
+            to: cleanPhoneNumber,
             appRef: appRef,
             metadata: {
                 callType: 'outbound',
                 timestamp: new Date().toISOString(),
                 purpose: 'product_inquiry',
-                source: 'frontend_web_app'
+                source: 'sigmoix_ai_frontend'
             }
         };
         
         // Create the call via Fonoster
-        const calls = new SDK.Calls(client);
+        const calls = new CallsApi(client);
         const response = await calls.createCall(callRequest);
         
         console.log('✅ Call initiated successfully:', response.callId || response.id);
@@ -99,9 +111,9 @@ app.post('/api/initiate-call', async (req, res) => {
         res.json({
             success: true,
             callId: response.callId || response.id || 'unknown',
-            message: 'Call initiated successfully',
-            to: to,
-            from: from,
+            message: 'Call initiated successfully - You will receive a call shortly!',
+            to: cleanPhoneNumber,
+            from: fromNumber,
             status: response.status || 'initiated'
         });
         
