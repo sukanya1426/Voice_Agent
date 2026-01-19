@@ -1,6 +1,6 @@
 # Sigmoix AI Voice Agent
 
-An intelligent voice assistant for product inquiries with a beautiful web interface and powerful voice AI backend.
+An intelligent voice assistant for product inquiries with Twilio integration and a beautiful web interface.
 
 ## 🏗️ Architecture
 
@@ -11,183 +11,380 @@ Voice_Agent/
 │   ├── styles.css     # Modern responsive styling  
 │   └── script.js      # Frontend interaction logic
 ├── Backend/           # Voice agent server and API
-│   ├── fonoster_bot.js      # Main voice application (Fonoster)
-│   ├── api-server.js        # Express API server for frontend
-│   ├── fonoster_setup.js    # Development setup helper
-│   ├── fonoster_outbound.js # Outbound call scripts
-│   ├── products_merged.csv  # Product database
-│   ├── .env                 # Environment variables
-│   └── package.json         # Dependencies and scripts
+│   ├── bot.py              # Main voice agent (Pipecat + Twilio)
+│   ├── api-server.js       # Express API server for frontend
+│   ├── twilio_webhook_server.py # Webhook server for Twilio
+│   ├── twilio_call_service.py   # Outbound call service
+│   ├── rag_pipeline.py     # RAG pipeline for product search
+│   ├── products_merged.csv # Product database (10,799 products)
+│   ├── requirements.txt    # Python dependencies
+│   ├── .env               # Environment variables
+│   └── package.json       # Node.js dependencies and scripts
+├── venv/              # Python virtual environment
 └── README.md          # This file
 ```
 
 ## ✨ Features
 
 ### Frontend (Web Interface)
-- **Modern UI**: Clean, responsive design inspired by ElevenLabs
+- **Modern UI**: Clean, responsive design
 - **Talk to Agent Button**: One-click access to voice assistant
 - **Interactive Modal**: Popup interface for initiating calls
 - **Real-time Status**: Connection status and call progress
 - **Product Demo**: Interactive chat preview
 - **Mobile Responsive**: Works on all devices
+- **Bangladesh Phone Support**: Default +880 country code
 
 ### Backend (Voice Agent)
-- **Product Inquiry Assistant**: Searches CSV database of technology products
-- **Natural Language AI**: OpenAI/Cerebras integration for conversational responses
-- **Fonoster Integration**: Professional telephony via Fonoster platform
-- **CSV Product Database**: Extensive product catalog with pricing and specs
-- **REST API**: Express server for frontend-backend communication
-- **Call Management**: Inbound and outbound call handling
+- **AI Voice Assistant**: Real-time voice conversation with Twilio integration
+- **RAG Pipeline**: Search through 10,799+ technology products
+- **Multi-AI Support**: Cerebras, OpenAI LLM integration
+- **Speech Services**: Deepgram (STT) + Cartesia (TTS)
+- **Product Search**: Natural language product queries
+- **Outbound Calls**: Call customers directly
+- **Webhook Integration**: Handle incoming calls via Twilio
 
 ## Prerequisites
 
-- Node.js 16+
-- [ngrok](https://ngrok.com/docs/getting-started/) (for TCP tunneling)
-- [Fonoster Account](https://console.fonoster.com/) and phone number
-- AI Service API keys for: [Deepgram](https://console.deepgram.com/signup), [OpenAI](https://auth.openai.com/create-account), or [Cerebras](https://inference.cerebras.ai/)
+- **Python 3.11+** with virtual environment
+- **Node.js 16+**
+- **ngrok** for webhook tunneling
+- **API Keys**:
+  - [Twilio Account](https://console.twilio.com/) (Account SID, Auth Token, Phone Number)
+  - [Deepgram](https://console.deepgram.com/) (Speech-to-Text)
+  - [Cartesia](https://cartesia.ai/) (Text-to-Speech)
+  - [Cerebras](https://inference.cerebras.ai/) or [OpenAI](https://platform.openai.com/) (LLM)
 
-## Quick Start
+## 🚀 Quick Start Guide
 
-1) Clone and enter the repo
+### Step 1: Clone and Setup Project
 
 ```bash
-git clone https://github.com/sukanya1426/Voice_Agent.git
+git clone https://github.com/your-repo/Voice_Agent.git
 cd Voice_Agent
 ```
 
-2) Create `.env` and add your API keys
+### Step 2: Setup Python Environment
 
 ```bash
-cp .env.example .env
+# Create virtual environment in project root
+python3 -m venv venv
+source venv/bin/activate  # On macOS/Linux
+# venv\Scripts\activate    # On Windows
+
+# Install Python dependencies
+cd Backend
+pip install -r requirements.txt
 ```
 
-```bash
-# Fill in .env with your keys:
-# FONOSTER_API_KEY=...
-# FONOSTER_API_SECRET=...
-# FONOSTER_ACCESS_KEY_ID=...
-# FONOSTER_APP_REF=...
-# OPENAI_API_KEY=... (or CEREBRAS_API_KEY)
-```
-
-3) Install dependencies
+### Step 3: Setup Node.js Dependencies
 
 ```bash
+# Install Node.js dependencies (stay in Backend directory)
 npm install
 ```
 
-4) Run the helper to start ngrok TCP tunnel and your Voice Application
+### Step 4: Configure Environment Variables
 
 ```bash
-node fonoster_setup.js
+# Copy and edit the .env file
+cp .env.example .env  # If available, or create new .env file
 ```
 
-- The helper starts ngrok TCP tunnel on port 50061
-- Launches your Fonoster Voice Application server
-- Displays setup instructions and ngrok URL
-
-5) Deploy to Fonoster and configure
-
-- Deploy your Voice Application to Fonoster Console
-- Get your `FONOSTER_APP_REF` and update `.env`
-- Configure your Fonoster phone number to use your deployed app
-
-For outbound calls:
+Edit the `.env` file with your API keys:
 
 ```bash
-node fonoster_outbound.js --to +15551234567 --from +YOUR_FONOSTER_NUMBER
+# Speech-to-Text (Deepgram)
+DEEPGRAM_API_KEY="your_deepgram_api_key_here"
+
+# Text-to-Speech (Cartesia)
+CARTESIA_API_KEY="your_cartesia_api_key_here"
+
+# LLM (Cerebras - preferred, or OpenAI as fallback)
+CEREBRAS_API_KEY="your_cerebras_api_key_here"
+OPENAI_API_KEY="your_openai_api_key_here"
+
+# Twilio Configuration
+TWILIO_ACCOUNT_SID="your_twilio_account_sid"
+TWILIO_AUTH_TOKEN="your_twilio_auth_token"
+TWILIO_PHONE_NUMBER="your_twilio_phone_number"  # e.g., +16592468685
+
+# Ngrok Configuration
+NGROK_AUTHTOKEN="your_ngrok_auth_token"
+NGROK_HOST="your-unique-subdomain.ngrok-free.dev"
+PIPECAT_PROXY_HOST="your-unique-subdomain.ngrok-free.dev"
 ```
 
-### Test Your Phone Bot
+### Step 5: Setup Ngrok Tunnel
 
-**Call your Fonoster phone number** to start talking with your AI bot! 🚀
+**Option 1: Using ngrok executable (included)**
+```bash
+# From Backend directory
+./ngrok http 8765
+```
 
-> 💡 **Tip**: Check your terminal for debug logs showing your Voice Application's conversation flow.
+**Option 2: Using global ngrok**
+```bash
+# Install ngrok globally
+brew install ngrok  # macOS
+# or download from https://ngrok.com/download
 
-## Troubleshooting
+# Authenticate (one-time setup)
+ngrok config add-authtoken YOUR_NGROK_TOKEN
 
-- **Call doesn't connect**: Verify your Voice Application is deployed and configured in Fonoster Console
-- **No audio or bot doesn't respond**: Check that all API keys are correctly set in your `.env` file
-- **Voice Application errors**: Ensure your Node.js server is running and ngrok TCP tunnel is active
-- **ngrok tunnel issues**: Free ngrok URLs change each restart - redeploy your Voice Application with new URL
-- **SDK errors**: Check your Fonoster API credentials and ensure your account has sufficient credits
+# Start tunnel
+ngrok http 8765
+```
 
-## Understanding the Call Flow
+**Important**: Copy the ngrok URL (e.g., `https://abc123.ngrok-free.dev`) and update your `.env` file:
+```bash
+NGROK_HOST=abc123.ngrok-free.dev
+PIPECAT_PROXY_HOST=abc123.ngrok-free.dev
+```
 
-1. **Incoming Call**: User dials your Fonoster number
-2. **Voice Application**: Fonoster routes call to your deployed Voice Application
-3. **TCP Connection**: Your local server (via ngrok) handles the call flow
-4. **AI Processing**: Speech-to-text → AI response → Text-to-speech
-5. **Response**: Synthesized speech streams back to caller through Fonoster
+## 🏃‍♂️ Running the Application
 
-## Outbound calls (Fonoster → phone)
-
-You can place outbound calls that connect the callee to your running Voice Application.
-
-Prereqs:
-- Your Voice Application must be deployed to Fonoster
-- Your local server can be running for development: `node fonoster_bot.js`
-- `FONOSTER_API_KEY`, `FONOSTER_API_SECRET`, `FONOSTER_ACCESS_KEY_ID` set in your environment
-- A Fonoster phone number to place calls from
-
-Make the call:
+### Complete Application (Recommended)
 
 ```bash
-node fonoster_outbound.js --to +15551234567 --from +YOUR_FONOSTER_NUMBER
+# Make sure you're in the Backend directory
+cd Voice_Agent/Backend
+
+# Activate virtual environment
+source ../venv/bin/activate  # On macOS/Linux
+# ..\venv\Scripts\activate    # On Windows
+
+# Start everything (API server + Webhook server)
+npm run dev
 ```
 
-Notes:
-- The script uses Fonoster SDK to initiate calls
-- The `appRef` in your `.env` determines which Voice Application handles the call
-- You can pass metadata to your Voice Application through the call request
+This starts:
+- **API Server**: http://localhost:3001 (Frontend available here)
+- **Webhook Server**: http://0.0.0.0:8765 (for Twilio webhooks)
 
-## Development Setup with ngrok
+### Running Components Separately
 
-Use this helper to set up your local development environment:
+**Terminal 1: Start API Server**
+```bash
+cd Voice_Agent/Backend
+npm run server
+# Runs on http://localhost:3001
+```
+
+**Terminal 2: Start Webhook Server**
+```bash
+cd Voice_Agent/Backend
+source ../venv/bin/activate
+python twilio_webhook_server.py
+# Runs on port 8765
+```
+
+**Terminal 3: Start Ngrok Tunnel**
+```bash
+cd Voice_Agent/Backend
+./ngrok http 8765
+# Note the public URL and update .env file
+```
+
+### Testing the Application
+
+1. **Open Web Interface**: http://localhost:3001
+2. **Click "Talk to Agent"**
+3. **Enter Phone Number**: 
+   - Select country code (+880 for Bangladesh)
+   - Enter your number (e.g., 1312190214)
+4. **Click "Call Me"**
+5. **Answer Your Phone**: The Sigmoix AI assistant will greet you!
+
+### Example Conversation
+
+When you answer the call:
+- **AI**: "Hello from Sigmoix AI! I'm your technology product assistant. Tell me what you're looking for and I'll help you find the perfect product."
+- **You**: "I need a gaming laptop under 50,000 Taka"
+- **AI**: "I found several great gaming laptops in your budget. Let me tell you about..."
+
+## 🔧 Available Scripts
+
+From the `Backend` directory:
 
 ```bash
-node fonoster_setup.js
+# Development (starts both servers)
+npm run dev
+
+# Production
+npm start                    # Start API server only
+npm run server              # Start API server only
+npm run start-webhook       # Start webhook server only
+
+# Testing
+npm run test-call           # Test call functionality
+npm run test-rag           # Test RAG pipeline
+
+# Setup
+npm run full-setup         # Install all dependencies
 ```
 
-This will:
-- Start an ngrok TCP tunnel on port 50061
-- Launch your Voice Application server locally
-- Display the public TCP URL for Fonoster configuration
-- Keep the tunnel active for development
+## 📞 Twilio Configuration
 
-Options:
+### Required Twilio Setup
+
+1. **Create Twilio Account**: https://console.twilio.com/
+2. **Get Phone Number**: Buy a Twilio phone number
+3. **Configure Webhook**: 
+   - Go to Phone Numbers → Manage → Active Numbers
+   - Select your number
+   - Set webhook URL to: `https://your-ngrok-url.ngrok-free.dev/webhook/twilio/start`
+4. **Copy Credentials**: Account SID, Auth Token, Phone Number
+
+### Bangladesh Phone Support
+
+The system is pre-configured for Bangladesh (+880) calls:
+- Default country code: +880
+- Format: +8801312190214 (your number: 01312190214)
+- International calling enabled through Twilio
+
+## 🛠️ Development
+
+### Project Structure
+```
+Backend/
+├── bot.py                 # Main voice agent (Pipecat pipeline)
+├── twilio_webhook_server.py  # FastAPI webhook server
+├── twilio_call_service.py    # Outbound call service
+├── api-server.js          # Express.js API server
+├── rag_pipeline.py        # Product search & AI pipeline
+├── products_merged.csv    # 10,799 product database
+└── requirements.txt       # Python dependencies
+
+Frontend/
+├── index.html            # Main web application
+├── script.js            # Frontend logic & API calls
+└── styles.css           # Responsive styling
+```
+
+### Key Components
+
+1. **Voice Pipeline** (`bot.py`):
+   - Deepgram: Speech-to-Text
+   - Cerebras/OpenAI: AI responses with RAG
+   - Cartesia: Text-to-Speech
+   - Twilio: Phone integration
+
+2. **RAG Pipeline** (`rag_pipeline.py`):
+   - 10,799 technology products
+   - Semantic search with embeddings
+   - Product recommendations
+
+3. **API Layer** (`api-server.js`):
+   - Frontend serving
+   - Call initiation endpoint
+   - Health checks
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+#### 1. "ModuleNotFoundError: No module named 'pipecat'"
 ```bash
-# Custom port
-node fonoster_setup.js --port 8080
-
-# Don't start the Voice Application automatically  
-node fonoster_setup.js --no-start-app
-
-# Exit after setup (don't keep tunnel running)
-node fonoster_setup.js --no-keep-running
+# Solution: Activate virtual environment and install requirements
+source venv/bin/activate
+cd Backend
+pip install -r requirements.txt
 ```
 
-For production deployment, you'll want to:
-1. Deploy your Voice Application directly to Fonoster's platform
-2. Use Fonoster Console to configure your phone numbers
-3. Set up proper authentication and scaling
+#### 2. Call connects but says "Trial Account" message
+```bash
+# Solution: Ngrok tunnel not working properly
+# Check if ngrok is running and .env has correct NGROK_HOST
+./ngrok http 8765
+# Copy the URL to .env file
+```
 
-Environment variables needed:
-- `FONOSTER_API_KEY`, `FONOSTER_API_SECRET`, `FONOSTER_ACCESS_KEY_ID` - from Fonoster Console
-- `FONOSTER_APP_REF` - your deployed Voice Application reference
-- `OPENAI_API_KEY` or `CEREBRAS_API_KEY` - for AI responses
-- `NGROK_AUTHTOKEN` - recommended for stable tunnels during development
+#### 3. "RuntimeWarning: Couldn't find ffmpeg"
+```bash
+# Solution: Install ffmpeg (optional, doesn't break functionality)
+brew install ffmpeg  # macOS
+# sudo apt install ffmpeg  # Linux
+```
 
-## Voice Application Features
+#### 4. API Server can't start
+```bash
+# Solution: Check if port 3001 is free
+lsof -i :3001
+# Kill any processes using the port
+kill -9 <PID>
+```
 
-Your Fonoster Voice Application (`fonoster_bot.js`) includes:
+#### 5. Webhook Server import errors
+```bash
+# Solution: Make sure virtual environment is activated
+which python  # Should show path to venv/bin/python
+source venv/bin/activate
+```
 
-- **Product Inquiry Assistant**: Handles calls for Sigmoix AI product inquiries
-- **CSV Product Database**: Searches through products_merged.csv containing technology products
-- **Product Search**: Finds products by name, category, brand, features, or specifications
-- **AI Conversation**: Natural language processing with OpenAI/Cerebras for intelligent responses
-- **Speech Recognition**: Built-in speech-to-text via Fonoster
-- **Conversation Memory**: Maintains context throughout the call
-- **Graceful Handling**: Manages silence, errors, and call termination
+### Debug Mode
 
-The bot can handle both inbound calls (customers calling in) and outbound calls (calling customers back).
+```bash
+# Check if all services are running
+curl http://localhost:3001/api/health
+curl http://localhost:8765/
+
+# Test webhook endpoint
+curl https://your-ngrok-url.ngrok-free.dev/
+
+# Verbose logging
+DEBUG=* npm run dev
+```
+
+## 🌟 Features in Detail
+
+### AI Voice Agent Capabilities
+- **Natural Conversation**: Handles interruptions, context switching
+- **Product Search**: Semantic search through 10,799+ products
+- **Price Queries**: Real-time pricing and availability
+- **Recommendations**: AI-powered product suggestions
+- **Multi-language**: Supports Bengali and English queries
+
+### Web Interface Features
+- **One-Click Calling**: Direct call initiation from browser
+- **Real-time Status**: Call progress and connection status
+- **Mobile Responsive**: Works on phones, tablets, desktops
+- **Country Code Support**: Automatic +880 (Bangladesh) selection
+- **Call History**: Track previous interactions
+
+### Technical Features
+- **High Availability**: Automatic failover and retry logic
+- **Scalable**: Handles multiple concurrent calls
+- **Secure**: Environment-based configuration
+- **Monitoring**: Built-in health checks and logging
+- **Fast**: Optimized AI pipeline for real-time responses
+
+---
+
+## 📋 Quick Start Checklist
+
+- [ ] ✅ Python virtual environment created
+- [ ] ✅ Node.js dependencies installed  
+- [ ] 🔲 API keys configured in .env
+- [ ] 🔲 Ngrok tunnel running
+- [ ] 🔲 Updated .env with ngrok URL
+- [ ] 🔲 Started application with `npm run dev`
+- [ ] 🔲 Tested call functionality
+- [ ] 🔲 Voice agent responds correctly
+
+**Ready to start? Run `npm run dev` and call your AI assistant! 🚀**
+
+## 📞 Support & Contact
+
+- **Twilio Documentation**: https://www.twilio.com/docs
+- **Twilio Console**: https://console.twilio.com/
+- **Pipecat Documentation**: https://docs.pipecat.ai/
+- **Project Issues**: Create issues in your repository
+- **AI Services**: 
+  - [Deepgram Docs](https://developers.deepgram.com/)
+  - [Cartesia Docs](https://docs.cartesia.ai/)
+  - [Cerebras Docs](https://inference.cerebras.ai/docs)
+
+---
+
+**Ready to talk to your AI? Open http://localhost:3001, click "Talk to Agent", and call your assistant! 🎉**

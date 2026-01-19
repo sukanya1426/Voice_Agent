@@ -139,12 +139,12 @@ async function sendQuestion() {
     const typingElement = addMessageToConversation('assistant', 'Thinking...', true);
     
     try {
-        const response = await fetch(`${CONFIG.BACKEND_URL}/api/chat`, {
+        const response = await fetch(`${CONFIG.BACKEND_URL}/api/test-search`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ message: question })
+            body: JSON.stringify({ query: question })
         });
         
         if (!response.ok) {
@@ -170,7 +170,7 @@ async function sendQuestion() {
         }
         
         // Add error message - fall back to demo mode
-        addMessageToConversation('assistant', 'I\'m currently running in demo mode. Here\'s what I can tell you about our products: We offer a wide range of technology solutions including laptops, desktops, gaming computers, and accessories. Feel free to ask about specific product categories or price ranges!');
+        addMessageToConversation('assistant', 'I\'m currently running in demo mode. Here\'s what I can tell you about our products: We offer a wide range of technology solutions including AMD Ryzen gaming PCs, desktop computers, processors, and accessories. Try asking about "gaming PC" or "Ryzen processors" to see our product recommendations!');
     }
 }
 
@@ -205,7 +205,7 @@ async function initiateCall() {
         const selectedCountryCode = countryCode.value;
         const formattedPhoneNumber = formatPhoneNumberForCall(phoneNumber, selectedCountryCode);
         
-        // Make API call to backend to initiate Fonoster call
+        // Make API call to backend to initiate Twilio call
         const response = await fetch(`${CONFIG.BACKEND_URL}/api/initiate-call`, {
             method: 'POST',
             headers: {
@@ -218,7 +218,7 @@ async function initiateCall() {
         
         const result = await response.json();
         
-        if (response.ok) {
+        if (result.success) {
             handleCallSuccess(result);
         } else {
             throw new Error(result.error || 'Failed to initiate call');
@@ -249,7 +249,7 @@ function formatPhoneNumberForCall(phoneNumber, countryCode) {
 }
 
 function handleCallSuccess(result) {
-    currentCall = result.callId;
+    currentCall = result.call_sid || 'call_connected';
     isConnected = true;
     
     startCallBtn.innerHTML = `
@@ -260,10 +260,10 @@ function handleCallSuccess(result) {
     `;
     startCallBtn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
     
-    assistantStatus.textContent = 'Call connected! You should receive a call shortly.';
+    assistantStatus.textContent = 'Call initiated! Please answer your phone to start talking with the Sigmoix AI Voice Agent.';
     
     // Add connected message to conversation
-    addMessageToConversation('assistant', 'Great! I\'ve initiated a call to your number. Please answer your phone to start talking with me!');
+    addMessageToConversation('assistant', result.message || 'Great! I\'ve initiated a call to your number. Please answer your phone to start talking with me!');
     
     // Show audio player
     showAudioPlayer();
@@ -271,7 +271,7 @@ function handleCallSuccess(result) {
     // Start call timer
     startCallTimer();
     
-    // Add end call button
+    // Add end call button after a short delay
     setTimeout(() => {
         startCallBtn.innerHTML = `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -281,7 +281,7 @@ function handleCallSuccess(result) {
         `;
         startCallBtn.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
         startCallBtn.onclick = endCall;
-    }, 2000);
+    }, 3000);
 }
 
 function handleCallError(errorMessage) {

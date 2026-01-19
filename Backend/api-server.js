@@ -2,27 +2,17 @@
  * Backend API Server for Sigmoix AI Voice Agent
  * 
  * This Express server provides API endpoints for the frontend to communicate
- * with the Fonoster voice agent system.
+ * with the Twilio-based voice agent system using Python bot integration.
  */
 
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { spawn } = require('child_process');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-
-// Configure Fonoster SDK with environment variables
-const fonosterConfig = {
-    accessKeyId: process.env.FONOSTER_ACCESS_KEY_ID,
-    accessKeySecret: process.env.FONOSTER_API_SECRET,
-    endpoint: "https://api.fonoster.com/v1beta2"
-};
-
-// Import Fonoster SDK for outbound calls
-const SDK = require("@fonoster/sdk");
-const { CallsApi } = SDK;
 
 // Middleware
 app.use(cors());
@@ -37,11 +27,12 @@ app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'ok', 
         message: 'Sigmoix AI Backend Server is running',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        service: 'voice_agent_api'
     });
 });
 
-// Initiate call endpoint
+// Initiate call endpoint - Updated to use Twilio directly
 app.post('/api/initiate-call', async (req, res) => {
     try {
         const { phoneNumber } = req.body;
@@ -62,212 +53,171 @@ app.post('/api/initiate-call', async (req, res) => {
             });
         }
         
-        // Use a default FROM number (your Fonoster number)
-        const fromNumber = "+16592468685"; // Your Fonoster number
+        console.log(`📞 Initiating Sigmoix AI Voice Agent call to ${cleanPhoneNumber}...`);
         
-        console.log(`📞 Initiating call from ${fromNumber} to ${cleanPhoneNumber}...`);
+        // Call the Python Twilio service to initiate the call
+        const pythonProcess = spawn('python', [
+            path.join(__dirname, 'twilio_call_service.py'),
+            cleanPhoneNumber
+        ]);
         
-        // Initialize Fonoster client
-        const apiKey = process.env.FONOSTER_API_KEY;
-        const apiSecret = process.env.FONOSTER_API_SECRET;
-        const accessKeyId = process.env.FONOSTER_ACCESS_KEY_ID;
-        const appRef = process.env.FONOSTER_APP_REF;
+        let outputData = '';
+        let errorData = '';
         
-        if (!apiKey || !apiSecret || !accessKeyId) {
-            return res.status(500).json({
-                error: 'Missing Fonoster credentials in server configuration'
-            });
-        }
+        pythonProcess.stdout.on('data', (data) => {
+            outputData += data.toString();
+        });
         
-        if (!appRef) {
-            return res.status(500).json({
-                error: 'Missing FONOSTER_APP_REF in server configuration'
-            });
-        }
+        pythonProcess.stderr.on('data', (data) => {
+            errorData += data.toString();
+        });
         
-        // Create and authenticate Fonoster client
-        const client = new SDK.Client(fonosterConfig);
-        await client.loginWithApiKey(apiKey, apiSecret);
-        
-        // Prepare call request
-        const callRequest = {
-            from: fromNumber,
-            to: cleanPhoneNumber,
-            appRef: appRef,
-            metadata: {
-                callType: 'outbound',
-                timestamp: new Date().toISOString(),
-                purpose: 'product_inquiry',
-                source: 'sigmoix_ai_frontend'
+        pythonProcess.on('close', (code) => {
+            if (code === 0) {
+                console.log('✅ Call initiated successfully');
+                res.json({
+                    success: true,
+                    message: 'Call initiated successfully! You should receive a call from Sigmoix AI shortly.',
+                    phoneNumber: cleanPhoneNumber,
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                console.error('❌ Failed to initiate call:', errorData);
+                res.status(500).json({
+                    success: false,
+                    error: 'Failed to initiate call',
+                    details: errorData || 'Unknown error occurred'
+                });
             }
-        };
-        
-        // Create the call via Fonoster
-        const calls = new CallsApi(client);
-        const response = await calls.createCall(callRequest);
-        
-        console.log('✅ Call initiated successfully:', response.callId || response.id);
-        
-        res.json({
-            success: true,
-            callId: response.callId || response.id || 'unknown',
-            message: 'Call initiated successfully - You will receive a call shortly!',
-            to: cleanPhoneNumber,
-            from: fromNumber,
-            status: response.status || 'initiated'
         });
         
     } catch (error) {
-        console.error('❌ Call initiation failed:', error.message);
-        
-        let errorMessage = 'Failed to initiate call';
-        let statusCode = 500;
-        
-        // Handle specific errors
-        if (error.message.includes('authentication') || error.message.includes('unauthorized')) {
-            errorMessage = 'Fonoster authentication failed. Check API credentials.';
-            statusCode = 401;
-        } else if (error.message.includes('app') || error.message.includes('application')) {
-            errorMessage = 'Voice Application not found. Check FONOSTER_APP_REF.';
-            statusCode = 404;
-        } else if (error.message.includes('phone') || error.message.includes('number')) {
-            errorMessage = 'Invalid phone number format.';
-            statusCode = 400;
-        }
-        
-        res.status(statusCode).json({
-            error: errorMessage,
-            details: error.message
+        console.error('Error in /api/initiate-call:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+            message: 'Failed to process call request'
         });
     }
 });
 
 // Get call status endpoint
-app.get('/api/call-status/:callId', async (req, res) => {
+app.get('/api/call-status/:callSid', async (req, res) => {
     try {
-        const { callId } = req.params;
+        const { callSid } = req.params;
         
-        // In a real implementation, you would query Fonoster for call status
-        // For now, we'll return a mock status
+        // Here you could add logic to check call status via Twilio API
+        // For now, return a simple response
         res.json({
-            callId: callId,
-            status: 'active',
-            duration: '00:30',
-            timestamp: new Date().toISOString()
+            success: true,
+            callSid: callSid,
+            message: 'Call status check not implemented yet'
         });
         
     } catch (error) {
-        console.error('Error getting call status:', error.message);
+        console.error('Error checking call status:', error);
         res.status(500).json({
-            error: 'Failed to get call status',
-            details: error.message
+            success: false,
+            error: 'Failed to check call status'
         });
     }
 });
 
-// End call endpoint
-app.post('/api/end-call', async (req, res) => {
+// Test product search endpoint
+app.post('/api/test-search', async (req, res) => {
     try {
-        const { callId } = req.body;
+        const { query } = req.body;
         
-        if (!callId) {
+        if (!query) {
             return res.status(400).json({
-                error: 'Call ID is required'
+                error: 'Search query is required'
             });
         }
         
-        console.log(`📞 Ending call: ${callId}`);
+        // Test the RAG pipeline directly
+        const pythonProcess = spawn('python', ['-c', `
+import sys
+sys.path.append('${__dirname}')
+from rag_pipeline import search_products_for_voice_agent
+result = search_products_for_voice_agent('${query}')
+print(result)
+        `]);
         
-        // In a real implementation, you would use Fonoster SDK to end the call
-        // For now, we'll return a success response
+        let outputData = '';
+        let errorData = '';
         
-        res.json({
-            success: true,
-            message: 'Call ended successfully',
-            callId: callId,
-            timestamp: new Date().toISOString()
+        pythonProcess.stdout.on('data', (data) => {
+            outputData += data.toString();
         });
         
-    } catch (error) {
-        console.error('Error ending call:', error.message);
-        res.status(500).json({
-            error: 'Failed to end call',
-            details: error.message
+        pythonProcess.stderr.on('data', (data) => {
+            errorData += data.toString();
         });
-    }
-});
-
-// Get product information endpoint (for potential future use)
-app.get('/api/products', async (req, res) => {
-    try {
-        const { search, limit = 10 } = req.query;
         
-        // In a real implementation, you would load and search the CSV data
-        // For now, return mock product data
-        const mockProducts = [
-            {
-                name: "AMD Ryzen 5 7500F Gaming PC",
-                price: "৳93,900",
-                category: "Desktop > Gaming PC",
-                description: "High-performance gaming PC with AMD Ryzen 5 7500F processor and RTX graphics"
-            },
-            {
-                name: "AMD Ryzen 3 3200G Desktop PC",  
-                price: "৳24,499",
-                category: "Desktop > Budget PC",
-                description: "Affordable desktop PC perfect for office work and light gaming"
+        pythonProcess.on('close', (code) => {
+            if (code === 0) {
+                res.json({
+                    success: true,
+                    query: query,
+                    response: outputData.trim()
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    error: 'Failed to search products',
+                    details: errorData
+                });
             }
-        ];
-        
-        res.json({
-            products: mockProducts,
-            total: mockProducts.length,
-            search: search || 'all'
         });
         
     } catch (error) {
-        console.error('Error getting products:', error.message);
+        console.error('Error in product search test:', error);
         res.status(500).json({
-            error: 'Failed to get products',
-            details: error.message
+            success: false,
+            error: 'Internal server error'
         });
     }
 });
 
-// Serve frontend
+// Serve the main frontend page
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../Frontend', 'index.html'));
+    res.sendFile(path.join(__dirname, '../Frontend/index.html'));
 });
 
-// 404 handler
-app.use('*', (req, res) => {
-    res.status(404).json({
-        error: 'Endpoint not found',
-        path: req.originalUrl
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({
+        success: false,
+        error: 'Something went wrong!',
+        message: 'Internal server error'
     });
 });
 
-// Error handler
-app.use((error, req, res, next) => {
-    console.error('Server error:', error);
-    res.status(500).json({
-        error: 'Internal server error',
-        message: error.message
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        error: 'Endpoint not found',
+        message: `Cannot ${req.method} ${req.path}`
     });
 });
 
 // Start server
 app.listen(PORT, () => {
-    console.log('🚀 Sigmoix AI Backend Server started');
-    console.log(`📡 Server running on http://localhost:${PORT}`);
-    console.log(`🌐 Frontend available at http://localhost:${PORT}`);
-    console.log(`📞 API endpoints:`);
-    console.log(`   - GET  /api/health`);
-    console.log(`   - POST /api/initiate-call`);
-    console.log(`   - GET  /api/call-status/:callId`);
-    console.log(`   - POST /api/end-call`);
-    console.log(`   - GET  /api/products`);
-    console.log('');
-    console.log('💡 Make sure your Fonoster credentials are set in .env file');
-    console.log('⚠️  Remember to start your Fonoster voice agent: node fonoster_bot.js');
+    console.log(`🚀 Sigmoix AI Backend Server running on http://localhost:${PORT}`);
+    console.log(`📱 Frontend available at: http://localhost:${PORT}`);
+    console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
+    
+    // Log environment status
+    console.log('\n📋 Environment Status:');
+    console.log(`   Deepgram API: ${process.env.DEEPGRAM_API_KEY ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   Cartesia API: ${process.env.CARTESIA_API_KEY ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   Cerebras API: ${process.env.CEREBRAS_API_KEY ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   OpenAI API: ${process.env.OPENAI_API_KEY ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   Twilio SID: ${process.env.TWILIO_ACCOUNT_SID ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   Twilio Token: ${process.env.TWILIO_AUTH_TOKEN ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`   Ngrok Host: ${process.env.PIPECAT_PROXY_HOST ? '✅ Configured' : '❌ Missing'}`);
 });
+
+module.exports = app;

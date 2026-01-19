@@ -1,17 +1,16 @@
 
 
-"""Pipecat Twilio Phone Example.
+"""Sigmoix AI Voice Agent with RAG Pipeline Integration.
 
-The example runs a simple voice AI bot that you can connect to using a
-phone via Twilio.
-
-Required AI services:
+The Sigmoix AI Voice Agent is a comprehensive voice assistant that helps customers
+find technology products through natural conversation. It integrates:
 - Deepgram (Speech-to-Text)
-- Cerebras (LLM)
+- Cerebras/OpenAI (LLM with RAG)
 - Cartesia (Text-to-Speech)
+- Custom RAG pipeline for product search
 
-The example connects between client and server using a Twilio websocket
-connection.
+The agent connects via Twilio websocket for phone calls and provides
+intelligent product recommendations based on customer queries.
 
 Run the bot using::
 
@@ -31,25 +30,31 @@ from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIProcessor
-from pipecat.runner.types import RunnerArguments
-from pipecat.runner.utils import parse_telephony_websocket
 from pipecat.serializers.twilio import TwilioFrameSerializer
-from pipecat.services.cartesia.tts import CartesiaTTSService
-from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.services.llm_service import FunctionCallParams
+from pipecat.services.cartesia import CartesiaTTSService
+from pipecat.services.deepgram import DeepgramSTTService
+from pipecat.services.openai import OpenAILLMService
+from pipecat.services.ai_services import FunctionEntry
 from pipecat.transports.base_transport import BaseTransport
 from pipecat.transports.network.fastapi_websocket import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
 
+# Import our custom RAG pipeline
+from rag_pipeline import search_products_for_voice_agent, get_product_details_for_voice_agent, initialize_rag_pipeline
+
 # Load environment variables (API keys, Twilio, etc.)
 load_dotenv(override=True)
 
+# Initialize RAG pipeline on startup
+logger.info("Initializing RAG pipeline...")
+initialize_rag_pipeline()
+logger.info("RAG pipeline initialized successfully")
+
 
 async def run_bot(transport: BaseTransport):
-    logger.info(f"Starting bot")
+    logger.info(f"Starting Sigmoix AI Voice Agent")
 
     # STT: transcribe caller audio to text (Deepgram)
     stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
@@ -57,46 +62,92 @@ async def run_bot(transport: BaseTransport):
     # TTS: convert assistant text to speech (Cartesia)
     tts = CartesiaTTSService(
         api_key=os.getenv("CARTESIA_API_KEY"),
-        voice_id="5c42302c-194b-4d0c-ba1a-8cb485c84ab9",
+        voice_id="5c42302c-194b-4d0c-ba1a-8cb485c84ab9",  # Professional, friendly voice
     )
 
-    # LLM: generate responses and call tools (Cerebras)
-    llm = OpenAILLMService(api_key=os.getenv("CEREBRAS_API_KEY"), model="qwen-3-235b-a22b-instruct-2507", base_url="https://api.cerebras.ai/v1")
+    # LLM: generate responses and call tools (Cerebras or OpenAI)
+    cerebras_api_key = os.getenv("CEREBRAS_API_KEY")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    
+    if cerebras_api_key:
+        llm = OpenAILLMService(
+            api_key=cerebras_api_key, 
+            model="llama3.1-8b", 
+            base_url="https://api.cerebras.ai/v1"
+        )
+        logger.info("Using Cerebras LLM")
+    elif openai_api_key:
+        llm = OpenAILLMService(
+            api_key=openai_api_key, 
+            model="gpt-4o-mini"
+        )
+        logger.info("Using OpenAI LLM")
+    else:
+        raise ValueError("No valid LLM API key found")
 
-    # Prompt: set system role and current time context
+    # System prompt for Sigmoix AI Voice Agent
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     messages = [
         {
             "role": "system",
-            "content": f"You are a receptionist for a London based PUB/RESTAURANT called The Salusbury. You are on a phone call and therefore the users inputs are coming from a transcription model so take that into account. Respond naturally, concisely and keep your answers conversational as these will be spoken by a text to speech model. Your goal is to take the users request and to try to help them as best you can. Before using check_availability, ensure the user has provided a valid date and time and party size and also let them know that you will check availability and then call the function.\n\nContext: {now}",
+            "content": f"""You are the Sigmoix AI Voice Agent, a helpful and knowledgeable assistant specializing in technology products. You are currently on a phone call with a customer.
+
+IMPORTANT GUIDELINES:
+1. You are speaking over the phone, so keep responses conversational and concise
+2. Always be friendly, professional, and helpful
+3. When customers ask about products, use the search_products function to find relevant items
+4. For specific product details, use the get_product_details function
+5. Speak naturally as your responses will be converted to speech
+6. Don't use markdown formatting or complex punctuation
+7. Keep responses under 150 words for better voice delivery
+8. Always offer to help with follow-up questions
+
+Your main capabilities:
+- Search for technology products (computers, gaming PCs, processors, etc.)
+- Provide detailed product information including prices and specifications
+- Make product recommendations based on customer needs
+- Answer questions about product availability and warranties
+
+Current date and time: {now}
+
+Remember: You represent Sigmoix AI, a premium technology product assistant. Always maintain a professional yet friendly tone.""",
         },
     ]
 
-    # Tool: function the LLM can call to check availability
+    # Tools: functions the LLM can call for product search and details
     tools = [
         {
             "type": "function",
             "function": {
-                "name": "check_availability",
-                "description": "Check table availability. Always returns that a table is available.",
+                "name": "search_products",
+                "description": "Search for technology products based on customer query. Use this when customers ask about finding, looking for, or want to see products.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "date": {
+                        "query": {
                             "type": "string",
-                            "description": "Desired date (YYYY-MM-DD)",
-                        },
-                        "time": {
-                            "type": "string",
-                            "description": "Desired time (HH:MM, 24h)",
-                        },
-                        "party_size": {
-                            "type": "integer",
-                            "description": "Number of guests",
+                            "description": "The customer's search query or product requirements",
                         },
                     },
-                    "required": ["date", "time", "party_size"],
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_product_details",
+                "description": "Get detailed information about a specific product. Use this when customers ask for more details about a particular product.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "product_name": {
+                            "type": "string",
+                            "description": "The name of the product to get details for",
+                        },
+                    },
+                    "required": ["product_name"],
                 },
             },
         }
@@ -105,12 +156,46 @@ async def run_bot(transport: BaseTransport):
     # LLM context and aggregator (manages messages and tool calls)
     context = OpenAILLMContext(messages, tools=tools, tool_choice="auto")
 
-    # Register function handler for tool calls
-    async def check_availability(params: FunctionCallParams):
-        await asyncio.sleep(2)
-        await params.result_callback({"available": True})
+    # Register function handlers for tool calls
+    async def search_products(params):
+        """Handle product search requests"""
+        try:
+            query = params.args.get("query", "")
+            logger.info(f"Searching products for query: {query}")
+            
+            # Use our RAG pipeline to search products
+            result = search_products_for_voice_agent(query)
+            
+            await params.result_callback({"response": result})
+            logger.info("Product search completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Error in product search: {str(e)}")
+            await params.result_callback({
+                "response": "I'm having trouble searching for products right now. Could you please try again or be more specific about what you're looking for?"
+            })
 
-    llm.register_function("check_availability", check_availability)
+    async def get_product_details(params):
+        """Handle product detail requests"""
+        try:
+            product_name = params.args.get("product_name", "")
+            logger.info(f"Getting details for product: {product_name}")
+            
+            # Use our RAG pipeline to get product details
+            result = get_product_details_for_voice_agent(product_name)
+            
+            await params.result_callback({"response": result})
+            logger.info("Product details retrieved successfully")
+            
+        except Exception as e:
+            logger.error(f"Error getting product details: {str(e)}")
+            await params.result_callback({
+                "response": "I'm having trouble getting the product details right now. Could you please specify the product name more clearly?"
+            })
+
+    # Register the functions with the LLM
+    llm.register_function("search_products", search_products)
+    llm.register_function("get_product_details", get_product_details)
     context_aggregator = llm.create_context_aggregator(context)
 
     # RTVI: normalize and route frames/events between steps
@@ -152,14 +237,18 @@ async def run_bot(transport: BaseTransport):
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        logger.info(f"Client connected")
-        # On connect: send a greeting prompt to kick off the conversation
-        messages.append({"role": "system", "content": "Say something like 'Thank you for calling, The Salusbury how can I help you today?'"})
+        logger.info(f"Client connected to Sigmoix AI Voice Agent")
+        # Send the Sigmoix AI greeting when a call connects
+        greeting_message = {
+            "role": "system", 
+            "content": "Greet the caller with: 'Hello from Sigmoix AI! I'm your technology product assistant. Tell me what you're looking for and I'll help you find the perfect product.'"
+        }
+        messages.append(greeting_message)
         await task.queue_frames([context_aggregator.user().get_context_frame()])
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
-        logger.info(f"Client disconnected")
+        logger.info(f"Client disconnected from Sigmoix AI Voice Agent")
         # On disconnect: stop the pipeline task
         await task.cancel()
 
@@ -169,12 +258,17 @@ async def run_bot(transport: BaseTransport):
     await runner.run(task)
 
 
-async def bot(runner_args: RunnerArguments):
+async def bot(websocket):
     """Main bot entry point for the bot starter."""
 
-    # Parse the websocket URL to auto-detect Twilio transport and call data
-    transport_type, call_data = await parse_telephony_websocket(runner_args.websocket)
-    logger.info(f"Auto-detected transport: {transport_type}")
+    # Use websocket directly - assume Twilio transport
+    logger.info("Using Twilio transport for voice agent")
+    
+    # For Twilio, we'll extract call data from websocket messages if needed
+    call_data = {
+        "stream_id": "default_stream",
+        "call_id": "default_call"
+    }
 
     # Twilio serializer: attach call identifiers and credentials
     serializer = TwilioFrameSerializer(
@@ -186,7 +280,7 @@ async def bot(runner_args: RunnerArguments):
 
     # Transport: FastAPI WebSocket with audio in/out, VAD, and serialization
     transport = FastAPIWebsocketTransport(
-        websocket=runner_args.websocket,
+        websocket=websocket,
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
