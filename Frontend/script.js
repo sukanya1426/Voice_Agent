@@ -3,15 +3,17 @@ const talkToAgentBtn = document.getElementById('talk-to-agent');
 const voiceModal = document.getElementById('voice-modal');
 const closeModalBtn = document.getElementById('close-modal');
 const startCallBtn = document.getElementById('start-call');
+const startWebRTCBtn = document.getElementById('start-webrtc');
+const webrtcStatus = document.getElementById('webrtc-status');
 const connectionInfo = document.getElementById('connection-info');
 const assistantStatus = document.getElementById('assistant-status');
 const conversationArea = document.getElementById('conversation-area');
 const countryCode = document.getElementById('country-code');
 const avatarCircle = document.getElementById('avatar-circle');
 const audioPlayer = document.getElementById('audio-player');
-const phoneInput = document.getElementById('phone-number');
+const phoneInput = document.getElementById('phone-input');
 const questionInput = document.getElementById('question-input');
-const sendQuestionBtn = document.getElementById('send-question');
+const sendQuestionBtn = document.getElementById('send-question-btn');
 
 // Configuration
 const CONFIG = {
@@ -24,6 +26,10 @@ const CONFIG = {
 let currentCall = null;
 let isConnected = false;
 let callTimer = null;
+let webrtcSession = null;
+let mediaRecorder = null;
+let recognition = null;
+let synthesis = window.speechSynthesis;
 
 // Initialize Event Listeners
 document.addEventListener('DOMContentLoaded', function() {
@@ -41,6 +47,9 @@ function initializeEventListeners() {
     // Call Controls
     startCallBtn.addEventListener('click', initiateCall);
     
+    // WebRTC Controls
+    startWebRTCBtn.addEventListener('click', toggleWebRTC);
+    
     // Text Input Controls
     sendQuestionBtn.addEventListener('click', sendQuestion);
     questionInput.addEventListener('keypress', handleQuestionKeypress);
@@ -51,6 +60,9 @@ function initializeEventListeners() {
     
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeyboardShortcuts);
+    
+    // Initialize Web Speech API
+    initializeWebSpeech();
 }
 
 function initializeModal() {
@@ -435,6 +447,211 @@ function simulateCall() {
         }, 4000);
         
     }, 1500);
+}
+
+// WebRTC Functions
+function initializeWebSpeech() {
+    // Check for speech recognition support
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+        recognition = new SpeechRecognition();
+        
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+        
+        recognition.onstart = () => {
+            console.log('Speech recognition started');
+            webrtcStatus.style.display = 'flex';
+            avatarCircle.classList.add('listening');
+        };
+        
+        recognition.onresult = (event) => {
+            let finalTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript;
+                }
+            }
+            
+            if (finalTranscript.trim()) {
+                handleVoiceInput(finalTranscript.trim());
+            }
+        };
+        
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            stopWebRTC();
+        };
+        
+        recognition.onend = () => {
+            if (webrtcSession) {
+                // Restart recognition if session is active
+                setTimeout(() => recognition.start(), 100);
+            }
+        };
+    } else {
+        console.warn('Speech recognition not supported in this browser');
+        startWebRTCBtn.disabled = true;
+        startWebRTCBtn.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1.2-9.1c0-.66.54-1.2 1.2-1.2s1.2.54 1.2 1.2l-.01 6.2c0 .66-.53 1.2-1.19 1.2s-1.2-.54-1.2-1.2V4.9zm6.5 6.1c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5.2c0 3.42 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.5z"/>
+            </svg>
+            Not Supported
+        `;
+    }
+}
+
+async function toggleWebRTC() {
+    if (!webrtcSession) {
+        await startWebRTC();
+    } else {
+        stopWebRTC();
+    }
+}
+
+async function startWebRTC() {
+    try {
+        // Request microphone permission
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        webrtcSession = {
+            stream: stream,
+            isActive: true
+        };
+        
+        // Update UI
+        startWebRTCBtn.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+            </svg>
+            Stop Voice Chat
+        `;
+        startWebRTCBtn.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+        
+        // Start speech recognition
+        if (recognition) {
+            recognition.start();
+        }
+        
+        addMessageToConversation('assistant', 'Voice chat started! I\'m listening. You can ask me about products.');
+        assistantStatus.textContent = 'Listening for your voice...';
+        
+    } catch (error) {
+        console.error('Error starting WebRTC:', error);
+        if (error.name === 'NotAllowedError') {
+            alert('Microphone access is required for voice chat. Please allow microphone access and try again.');
+        } else {
+            alert('Failed to start voice chat. Please try again.');
+        }
+    }
+}
+
+function stopWebRTC() {
+    if (webrtcSession) {
+        // Stop all media tracks
+        webrtcSession.stream.getTracks().forEach(track => track.stop());
+        webrtcSession = null;
+    }
+    
+    if (recognition) {
+        recognition.stop();
+    }
+    
+    // Update UI
+    startWebRTCBtn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2c1.1 0 2 .9 2 2v7c0 1.1-.9 2-2 2s-2-.9-2-2V4c0-1.1.9-2 2-2zm5.3 6.7c-.4-.4-.4-1 0-1.4.4-.4 1-.4 1.4 0C20.4 9 21 10.4 21 12c0 1.6-.6 3-1.3 3.7-.4.4-1 .4-1.4 0-.4-.4-.4-1 0-1.4C18.8 13.8 19 12.9 19 12c0-.9-.2-1.8-.7-2.3zM5.3 8.7c-.4.4-.4 1 0 1.4.4.4.4 1 0 1.4C4.8 12 4.6 12.9 4.6 12c0 .9.2 1.8.7 2.3.4.4.4 1 0 1.4-.4.4-1 .4-1.4 0C3.2 15 2.6 13.6 2.6 12c0-1.6.6-3 1.3-3.7.4-.4 1-.4 1.4 0z"/>
+        </svg>
+        Start Voice Chat
+    `;
+    startWebRTCBtn.style.background = '';
+    webrtcStatus.style.display = 'none';
+    avatarCircle.classList.remove('listening');
+    
+    addMessageToConversation('assistant', 'Voice chat ended. You can start again anytime!');
+    assistantStatus.textContent = 'Ready to help you find products';
+}
+
+async function handleVoiceInput(transcript) {
+    console.log('Voice input received:', transcript);
+    
+    // Add user message to conversation
+    addMessageToConversation('user', transcript);
+    
+    // Show typing indicator
+    const typingElement = addMessageToConversation('assistant', 'Processing...', true);
+    
+    try {
+        // Send to backend for processing
+        const response = await fetch(`${CONFIG.BACKEND_URL}/api/test-search`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query: transcript })
+        });
+        
+        const data = await response.json();
+        
+        // Remove typing indicator
+        if (typingElement) {
+            typingElement.remove();
+        }
+        
+        const assistantResponse = data.response || 'I apologize, but I encountered an error processing your request.';
+        
+        // Add assistant response to conversation
+        addMessageToConversation('assistant', assistantResponse);
+        
+        // Use text-to-speech to speak the response
+        speakResponse(assistantResponse);
+        
+    } catch (error) {
+        console.error('Error processing voice input:', error);
+        
+        if (typingElement) {
+            typingElement.remove();
+        }
+        
+        const errorMessage = 'I\'m having trouble processing your request. Please try again or use the text input.';
+        addMessageToConversation('assistant', errorMessage);
+        speakResponse(errorMessage);
+    }
+}
+
+function speakResponse(text) {
+    if (!synthesis) return;
+    
+    // Cancel any ongoing speech
+    synthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.voice = synthesis.getVoices().find(voice => 
+        voice.name.includes('Female') || voice.name.includes('Karen') || voice.name.includes('Samantha')
+    ) || synthesis.getVoices()[0];
+    
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
+    utterance.volume = 0.8;
+    
+    utterance.onstart = () => {
+        avatarCircle.classList.add('speaking');
+    };
+    
+    utterance.onend = () => {
+        avatarCircle.classList.remove('speaking');
+    };
+    
+    synthesis.speak(utterance);
+}
+
+// Utility Functions
+function isValidPhoneNumber(phoneNumber) {
+    // Basic validation for international phone numbers
+    const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
+    return phoneRegex.test(phoneNumber);
 }
 
 // Utility Functions

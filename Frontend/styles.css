@@ -586,18 +586,24 @@ body {
 .voice-controls {
     border-top: 1px solid #eee;
     padding-top: 1.5rem;
+    margin-top: 1rem;
 }
 
 .phone-input-section {
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #f8f9ff;
+    border-radius: 12px;
+    border: 1px solid rgba(102, 126, 234, 0.2);
 }
 
 .phone-input-section label {
     display: block;
-    font-weight: 600;
-    color: #333;
+    font-weight: 700;
+    color: #667eea;
     margin-bottom: 0.75rem;
-    font-size: 0.9rem;
+    font-size: 1rem;
+    text-align: center;
 }
 
 .phone-input-group {
@@ -649,9 +655,10 @@ body {
     background: linear-gradient(135deg, #28a745, #20c997);
     color: white;
     border: none;
-    padding: 0.75rem 1.5rem;
+    padding: 1rem 2rem;
     border-radius: 25px;
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 1.1rem;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -659,6 +666,8 @@ body {
     transition: all 0.3s ease;
     flex: 1;
     justify-content: center;
+    min-height: 50px;
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
 }
 
 .voice-call-btn:hover {
@@ -699,6 +708,123 @@ body {
     50% {
         opacity: 0.5;
         transform: scale(1.2);
+    }
+}
+
+/* WebRTC Styles */
+.webrtc-section {
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, #f8f9ff, #f0f4ff);
+    border-radius: 12px;
+    border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.webrtc-section label {
+    display: block;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.webrtc-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.webrtc-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 25px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+    flex: 1;
+    justify-content: center;
+}
+
+.webrtc-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.webrtc-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.webrtc-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #667eea;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.divider {
+    text-align: center;
+    position: relative;
+    margin: 1.5rem 0;
+    color: #666;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #e9ecef;
+    z-index: 0;
+}
+
+.divider span {
+    background: white;
+    padding: 0 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+/* Avatar States */
+.avatar-circle.listening {
+    animation: listening 2s ease-in-out infinite;
+}
+
+.avatar-circle.speaking {
+    animation: speaking 1s ease-in-out infinite;
+}
+
+@keyframes listening {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 0 20px rgba(40, 167, 69, 0);
+    }
+}
+
+@keyframes speaking {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);
+    }
+    50% {
+        transform: scale(1.08);
+        box-shadow: 0 0 0 15px rgba(220, 53, 69, 0);
     }
 }
 

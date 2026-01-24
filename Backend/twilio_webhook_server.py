@@ -1,8 +1,5 @@
 """
-Twilio Webhook Server for Sigmoix AI Voice Agent
-
-This server handles incoming Twilio webhook requests and establishes
-websocket connections for the voice agent pipeline.
+Simplified Twilio Webhook Server for Sigmoix AI Voice Agent
 """
 
 import os
@@ -63,17 +60,13 @@ async def twilio_webhook_start(request: Request):
         logger.info(f"Incoming call - CallSid: {call_sid}, From: {from_number}, To: {to_number}")
         
         # Get the base URL for WebSocket connection
-        # In production, this should be your ngrok URL or domain
         base_url = os.getenv("PIPECAT_PROXY_HOST", "localhost:8765")
         
-        # Ensure the base URL has the right protocol
-        if not base_url.startswith(("ws://", "wss://")):
-            if "localhost" in base_url:
-                ws_url = f"ws://{base_url}/ws"
-            else:
-                ws_url = f"wss://{base_url}/ws"
+        # Construct WebSocket URL
+        if "localhost" in base_url:
+            ws_url = f"ws://{base_url}/ws"
         else:
-            ws_url = f"{base_url}/ws"
+            ws_url = f"wss://{base_url}/ws"
         
         # Return TwiML to establish WebSocket connection
         twiml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -98,8 +91,10 @@ async def twilio_webhook_start(request: Request):
         logger.error(f"Error handling Twilio webhook: {str(e)}")
         error_twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say>Sorry, there was an error connecting to our voice agent. Please try again later.</Say>
+    <Say>Sorry, there was an error connecting to the voice agent. Please try again later.</Say>
+    <Hangup/>
 </Response>"""
+        
         return Response(
             content=error_twiml,
             media_type="application/xml"
@@ -109,53 +104,32 @@ async def twilio_webhook_start(request: Request):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """
-    WebSocket endpoint that connects to the voice agent pipeline.
-    This is where Twilio streams audio for processing.
+    WebSocket endpoint for handling voice agent connections.
+    This is where Twilio will connect for the voice stream.
     """
     await websocket.accept()
+    logger.info("WebSocket connection established")
     
     try:
-        logger.info("WebSocket connection established for voice agent")
-        
-        # Run the voice agent bot with websocket
+        # Run the voice bot with this websocket connection
         await bot(websocket)
-        
     except Exception as e:
-        logger.error(f"Error in WebSocket connection: {str(e)}")
-        await websocket.close(code=1000)
-
-
-@app.post("/webhook/twilio/end")
-async def twilio_webhook_end(request: Request):
-    """
-    Twilio webhook endpoint for call end events (optional).
-    """
-    try:
-        form_data = await request.form()
-        call_sid = form_data.get("CallSid", "")
-        call_status = form_data.get("CallStatus", "")
-        
-        logger.info(f"Call ended - CallSid: {call_sid}, Status: {call_status}")
-        
-        return {"status": "acknowledged"}
-        
-    except Exception as e:
-        logger.error(f"Error handling call end webhook: {str(e)}")
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Error in voice bot: {str(e)}")
+    finally:
+        logger.info("WebSocket connection closed")
 
 
 if __name__ == "__main__":
-    # Get port from environment or use default
-    port = int(os.getenv("PORT", 8765))
-    host = os.getenv("HOST", "0.0.0.0")
+    # Get port from environment or default to 8765
+    port = int(os.getenv("WEBHOOK_PORT", 8765))
+    host = os.getenv("WEBHOOK_HOST", "0.0.0.0")
     
     logger.info(f"Starting Sigmoix AI Voice Agent Webhook Server on {host}:{port}")
     
-    # Run the server
+    # Run with uvicorn
     uvicorn.run(
-        "twilio_webhook_server:app",
-        host=host,
+        app, 
+        host=host, 
         port=port,
-        log_level="info",
-        reload=False
+        log_level="info"
     )

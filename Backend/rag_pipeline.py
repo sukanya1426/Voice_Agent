@@ -98,14 +98,85 @@ class ProductRAGPipeline:
             logger.error(f"Error initializing RAG pipeline: {str(e)}")
             raise
     
-    def search_products(self, query: str, top_k: int = 5, score_threshold: float = 0.3) -> List[Dict[str, Any]]:
+    def preprocess_query(self, query: str) -> str:
         """
-        Search for products based on natural language query.
+        Preprocess query for better embedding matching.
+        """
+        # Expand common abbreviations
+        expansions = {
+            'pc': 'personal computer',
+            'gpu': 'graphics card',
+            'cpu': 'processor',
+            'ram': 'memory',
+            'ssd': 'solid state drive',
+            'hdd': 'hard disk drive'
+        }
+        
+        processed = query.lower()
+        for abbr, full in expansions.items():
+            processed = processed.replace(abbr, full)
+        
+        return processed
+    
+    def apply_keyword_boosting(self, query: str, similarities: np.ndarray) -> np.ndarray:
+        """
+        Boost similarity scores for exact keyword matches.
+        """
+        query_words = set(query.split())
+        boosted_similarities = similarities.copy()
+        
+        for i, description in enumerate(self.product_descriptions):
+            description_words = set(description.lower().split())
+            
+            # Calculate keyword overlap
+            overlap = len(query_words.intersection(description_words))
+            if overlap > 0:
+                boost_factor = 1 + (overlap * 0.1)  # 10% boost per matching word
+                boosted_similarities[i] *= boost_factor
+        
+        return boosted_similarities
+    
+    def is_relevant_product(self, query: str, product: Dict[str, Any]) -> bool:
+        """
+        Additional relevance check to filter out irrelevant products.
+        """
+        # Extract key terms from query
+        key_terms = self.extract_key_terms(query)
+        
+        if not key_terms:
+            return True  # If no specific terms, accept the product
+        
+        # Check if product matches key terms
+        product_text = ' '.join([
+            str(product.get('name', '')),
+            str(product.get('category', '')),
+            str(product.get('description', '')),
+            str(product.get('key_features', ''))
+        ]).lower()
+        
+        # At least one key term should match
+        return any(term in product_text for term in key_terms)
+    
+    def extract_key_terms(self, query: str) -> List[str]:
+        """
+        Extract key terms that must be present in relevant products.
+        """
+        important_categories = [
+            'gaming', 'budget', 'laptop', 'desktop', 'workstation',
+            'ryzen', 'intel', 'amd', 'nvidia', 'gtx', 'rtx',
+            'processor', 'graphics', 'memory', 'storage'
+        ]
+        
+        return [term for term in important_categories if term in query.lower()]
+    
+    def search_products(self, query: str, top_k: int = 5, score_threshold: float = 0.4) -> List[Dict[str, Any]]:
+        """
+        Search for products based on natural language query with improved precision.
         
         Args:
             query: Natural language search query
             top_k: Number of top results to return
-            score_threshold: Minimum similarity score threshold
+            score_threshold: Minimum similarity score threshold (increased for precision)
             
         Returns:
             List of product dictionaries with similarity scores
@@ -113,14 +184,20 @@ class ProductRAGPipeline:
         try:
             logger.info(f"Searching for products with query: '{query}'")
             
-            # Generate embedding for the query
-            query_embedding = self.model.encode([query])
+            # Preprocess query for better matching
+            processed_query = self.preprocess_query(query)
+            
+            # Generate embedding for the processed query
+            query_embedding = self.model.encode([processed_query])
             
             # Compute cosine similarity
             similarities = cosine_similarity(query_embedding, self.embeddings)[0]
             
-            # Get top results
-            top_indices = np.argsort(similarities)[::-1][:top_k]
+            # Apply keyword boosting for exact matches
+            similarities = self.apply_keyword_boosting(query.lower(), similarities)
+            
+            # Get top results with stricter threshold
+            top_indices = np.argsort(similarities)[::-1][:top_k * 2]  # Get more candidates
             
             results = []
             for i, idx in enumerate(top_indices):
@@ -129,9 +206,14 @@ class ProductRAGPipeline:
                     product = self.products_df.iloc[idx].to_dict()
                     product['similarity_score'] = float(score)
                     product['rank'] = i + 1
-                    results.append(product)
+                    
+                    # Additional relevance filtering
+                    if self.is_relevant_product(query.lower(), product):
+                        results.append(product)
+                        if len(results) >= top_k:  # Stop when we have enough good results
+                            break
             
-            logger.info(f"Found {len(results)} relevant products")
+            logger.info(f"Found {len(results)} highly relevant products")
             return results
             
         except Exception as e:

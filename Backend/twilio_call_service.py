@@ -6,11 +6,12 @@ when users click the "Talk to Agent" button on the frontend.
 """
 
 import os
+import sys
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioException
 from dotenv import load_dotenv
 import logging
-from typing import Dict, Optional
+from typing import Dict
 
 # Load environment variables
 load_dotenv()
@@ -27,21 +28,24 @@ class TwilioCallService:
         """Initialize the Twilio client with credentials from environment"""
         self.account_sid = os.getenv("TWILIO_ACCOUNT_SID")
         self.auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-        self.twilio_phone_number = os.getenv("TWILIO_PHONE_NUMBER", "+16592468685")  # Default Twilio number
+        self.twilio_phone_number = os.getenv("TWILIO_PHONE_NUMBER", "+16592468685")
+        self.proxy_host = os.getenv("PIPECAT_PROXY_HOST") or os.getenv("NGROK_HOST")
         
         if not self.account_sid or not self.auth_token:
             raise ValueError("Missing Twilio credentials. Please set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN")
         
+        if not self.proxy_host:
+            raise ValueError("Missing PIPECAT_PROXY_HOST or NGROK_HOST for webhook URL")
+        
         self.client = Client(self.account_sid, self.auth_token)
         logger.info("Twilio Call Service initialized successfully")
     
-    def initiate_call(self, to_number: str, webhook_url: str) -> Dict:
+    def initiate_call(self, to_number: str) -> Dict:
         """
         Initiate an outbound call to the specified number.
         
         Args:
             to_number: The phone number to call (in E.164 format)
-            webhook_url: The webhook URL for handling the call
             
         Returns:
             Dictionary with call information or error details
@@ -54,17 +58,18 @@ class TwilioCallService:
                     "error": "Phone number must be in E.164 format (e.g., +1234567890)"
                 }
             
+            # Construct webhook URL for the voice agent
+            webhook_url = f"https://{self.proxy_host}/webhook/twilio/start"
+            
             logger.info(f"Initiating call from {self.twilio_phone_number} to {to_number}")
+            logger.info(f"Using webhook URL: {webhook_url}")
             
             # Create the call
             call = self.client.calls.create(
                 to=to_number,
                 from_=self.twilio_phone_number,
                 url=webhook_url,
-                method='POST',
-                status_callback=f"{webhook_url.replace('/start', '/end')}",
-                status_callback_event=['initiated', 'ringing', 'answered', 'completed'],
-                status_callback_method='POST'
+                method='POST'
             )
             
             logger.info(f"Call initiated successfully - SID: {call.sid}")
@@ -90,133 +95,35 @@ class TwilioCallService:
                 "success": False,
                 "error": f"Unexpected error: {str(e)}"
             }
-    
-    def get_call_status(self, call_sid: str) -> Dict:
-        """
-        Get the status of a specific call.
-        
-        Args:
-            call_sid: The Twilio call SID
-            
-        Returns:
-            Dictionary with call status information
-        """
-        try:
-            call = self.client.calls(call_sid).fetch()
-            
-            return {
-                "success": True,
-                "call_sid": call.sid,
-                "status": call.status,
-                "duration": call.duration,
-                "start_time": call.start_time.isoformat() if call.start_time else None,
-                "end_time": call.end_time.isoformat() if call.end_time else None
-            }
-            
-        except TwilioException as e:
-            logger.error(f"Error fetching call status: {str(e)}")
-            return {
-                "success": False,
-                "error": f"Error fetching call status: {str(e)}"
-            }
-    
-    def list_recent_calls(self, limit: int = 10) -> Dict:
-        """
-        List recent calls made through this service.
-        
-        Args:
-            limit: Maximum number of calls to return
-            
-        Returns:
-            Dictionary with list of recent calls
-        """
-        try:
-            calls = self.client.calls.list(limit=limit)
-            
-            call_list = []
-            for call in calls:
-                call_list.append({
-                    "call_sid": call.sid,
-                    "to": call.to,
-                    "from": call.from_,
-                    "status": call.status,
-                    "start_time": call.start_time.isoformat() if call.start_time else None,
-                    "duration": call.duration
-                })
-            
-            return {
-                "success": True,
-                "calls": call_list,
-                "count": len(call_list)
-            }
-            
-        except TwilioException as e:
-            logger.error(f"Error listing calls: {str(e)}")
-            return {
-                "success": False,
-                "error": f"Error listing calls: {str(e)}"
-            }
-
-
-# Global service instance
-_twilio_service: Optional[TwilioCallService] = None
-
-def get_twilio_service() -> TwilioCallService:
-    """Get or create the global Twilio service instance"""
-    global _twilio_service
-    if _twilio_service is None:
-        _twilio_service = TwilioCallService()
-    return _twilio_service
-
-
-def initiate_voice_agent_call(phone_number: str) -> Dict:
-    """
-    Convenient function to initiate a call to the Sigmoix AI Voice Agent.
-    
-    Args:
-        phone_number: The phone number to call
-        
-    Returns:
-        Dictionary with call result
-    """
-    # Get the webhook URL from environment or construct it
-    webhook_base = os.getenv("PIPECAT_PROXY_HOST", "localhost:8765")
-    if not webhook_base.startswith(("http://", "https://")):
-        if "localhost" in webhook_base:
-            webhook_url = f"http://{webhook_base}/webhook/twilio/start"
-        else:
-            webhook_url = f"https://{webhook_base}/webhook/twilio/start"
-    else:
-        webhook_url = f"{webhook_base}/webhook/twilio/start"
-    
-    service = get_twilio_service()
-    result = service.initiate_call(phone_number, webhook_url)
-    
-    if result["success"]:
-        logger.info(f"Voice agent call initiated to {phone_number}")
-    else:
-        logger.error(f"Failed to initiate voice agent call: {result['error']}")
-    
-    return result
 
 
 if __name__ == "__main__":
-    # Test the service
-    import sys
-    
+    """
+    Standalone script to initiate a call from command line or API server
+    Usage: python twilio_call_service.py <phone_number>
+    """
     if len(sys.argv) != 2:
         print("Usage: python twilio_call_service.py <phone_number>")
         print("Example: python twilio_call_service.py +1234567890")
         sys.exit(1)
     
     phone_number = sys.argv[1]
-    result = initiate_voice_agent_call(phone_number)
-    
-    if result["success"]:
-        print(f"✅ Call initiated successfully!")
-        print(f"Call SID: {result['call_sid']}")
-        print(f"Status: {result['status']}")
-        print(f"Message: {result['message']}")
-    else:
-        print(f"❌ Failed to initiate call:")
-        print(f"Error: {result['error']}")
+    try:
+        service = TwilioCallService()
+        result = service.initiate_call(phone_number)
+        
+        if result["success"]:
+            print("✅ Call initiated successfully!")
+            print(f"Call SID: {result['call_sid']}")
+            print(f"Status: {result['status']}")
+            print(f"From: {result['from']}")  
+            print(f"To: {result['to']}")
+            print(f"Message: {result['message']}")
+        else:
+            print("❌ Call initiation failed!")
+            print(f"Error: {result['error']}")
+            sys.exit(1)
+            
+    except Exception as e:
+        print(f"❌ Error: {str(e)}")
+        sys.exit(1)

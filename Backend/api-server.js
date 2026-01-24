@@ -56,10 +56,13 @@ app.post('/api/initiate-call', async (req, res) => {
         console.log(`📞 Initiating Sigmoix AI Voice Agent call to ${cleanPhoneNumber}...`);
         
         // Call the Python Twilio service to initiate the call
-        const pythonProcess = spawn('python', [
+        const pythonProcess = spawn('python3', [
             path.join(__dirname, 'twilio_call_service.py'),
             cleanPhoneNumber
-        ]);
+        ], {
+            cwd: __dirname,
+            env: { ...process.env }
+        });
         
         let outputData = '';
         let errorData = '';
@@ -90,6 +93,16 @@ app.post('/api/initiate-call', async (req, res) => {
                 });
             }
         });
+        
+        // Add timeout for the process
+        setTimeout(() => {
+            pythonProcess.kill('SIGKILL');
+            res.status(500).json({
+                success: false,
+                error: 'Call initiation timeout',
+                message: 'The call service is taking too long to respond'
+            });
+        }, 30000); // 30 seconds timeout
         
     } catch (error) {
         console.error('Error in /api/initiate-call:', error);
@@ -135,7 +148,7 @@ app.post('/api/test-search', async (req, res) => {
         }
         
         // Test the RAG pipeline directly
-        const pythonProcess = spawn('python', ['-c', `
+        const pythonProcess = spawn('python3', ['-c', `
 import sys
 sys.path.append('${__dirname}')
 from rag_pipeline import search_products_for_voice_agent

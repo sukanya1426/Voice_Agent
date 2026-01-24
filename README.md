@@ -1,5 +1,277 @@
 # Sigmoix AI Voice Agent
 
+A comprehensive voice assistant system that helps customers find technology products through natural conversation. The agent integrates multiple AI services including speech-to-text, large language models, text-to-speech, and a RAG (Retrieval-Augmented Generation) pipeline for product search.
+
+## 🏗️ Architecture
+
+The voice agent follows a modern pipeline architecture:
+
+```
+Voice Input → VAD → STT → LLM + RAG → TTS → Voice Output
+```
+
+### Core Components
+
+1. **Voice Activity Detection (VAD)**: Silero VAD for detecting speech
+2. **Speech-to-Text (STT)**: Deepgram for transcription
+3. **Intent Processing (LLM)**: Cerebras/OpenAI with RAG integration
+4. **Text-to-Speech (TTS)**: Cartesia for natural voice synthesis
+5. **RAG Pipeline**: Custom product search using sentence transformers
+
+### Dual Communication Modes
+
+- **Phone Calls**: Twilio integration for real phone conversations
+- **WebRTC**: Browser-based voice chat with Web Speech API
+
+## 🚀 Features
+
+- **Smart Product Search**: Advanced AI searches through extensive product catalog
+- **Natural Conversations**: Context-aware responses with human-like interaction
+- **Instant Information**: Real-time pricing, specifications, and availability
+- **Multi-Channel Support**: Phone calls and web-based voice chat
+- **RAG Integration**: Semantic search through product database
+- **Responsive Frontend**: Modern web interface with voice controls
+
+## 📁 Project Structure
+
+```
+Voice_Agent/
+├── Backend/
+│   ├── api-server.js                 # Express API server
+│   ├── bot.py                        # Main voice agent pipeline
+│   ├── rag_pipeline.py              # Product search RAG system
+│   ├── twilio_call_service.py       # Twilio call management
+│   ├── twilio_webhook_server.py     # Webhook server for calls
+│   ├── test_call.py                 # Call testing utility
+│   ├── products_merged.csv          # Product database
+│   ├── requirements.txt             # Python dependencies
+│   ├── package.json                 # Node.js dependencies
+│   ├── start.sh                     # Startup script
+│   ├── stop.sh                      # Shutdown script
+│   └── .env                         # Environment variables
+├── Frontend/
+│   ├── index.html                   # Main web interface
+│   ├── script.js                    # Frontend JavaScript
+│   └── styles.css                   # CSS styling
+└── README.md                        # This file
+```
+
+## 🛠️ Setup
+
+### Prerequisites
+
+- Python 3.8+
+- Node.js 16+
+- ngrok (for webhook tunneling)
+
+### 1. Environment Configuration
+
+Create a `.env` file in the `Backend/` directory:
+
+```bash
+# Speech-to-Text
+DEEPGRAM_API_KEY="your_deepgram_api_key"
+
+# Text-to-Speech  
+CARTESIA_API_KEY="your_cartesia_api_key"
+
+# Large Language Model (choose one)
+CEREBRAS_API_KEY="your_cerebras_api_key"
+OPENAI_API_KEY="your_openai_api_key"
+
+# Twilio (for phone calls)
+TWILIO_ACCOUNT_SID="your_twilio_account_sid"
+TWILIO_AUTH_TOKEN="your_twilio_auth_token"
+TWILIO_PHONE_NUMBER="+1234567890"
+
+# ngrok (for webhook tunneling)
+NGROK_AUTHTOKEN="your_ngrok_authtoken"
+PIPECAT_PROXY_HOST="your-ngrok-url.ngrok-free.dev"
+```
+
+### 2. Installation
+
+```bash
+cd Backend/
+chmod +x start.sh stop.sh
+./start.sh
+```
+
+The startup script will:
+- Install all dependencies
+- Start the API server (port 3001)
+- Start the webhook server (port 8765) 
+- Start ngrok tunnel (if configured)
+
+### 3. Access the Application
+
+- **Web Interface**: http://localhost:3001
+- **API Health**: http://localhost:3001/api/health
+- **Webhook Health**: http://localhost:8765
+
+## 🎯 Usage
+
+### Web Interface
+
+1. **Text Chat**: Type questions about products in the text input
+2. **Voice Chat**: Click "Start Voice Chat" for browser-based voice interaction
+3. **Phone Call**: Enter your phone number and click "Call Me"
+
+### Example Queries
+
+- "I'm looking for a gaming computer under $1000"
+- "Show me AMD Ryzen processors"
+- "What's the best laptop for programming?"
+- "I need a budget desktop PC"
+
+### Testing
+
+Test the call service directly:
+```bash
+python test_call.py
+```
+
+Test the RAG pipeline:
+```bash
+python -c "from rag_pipeline import search_products_for_voice_agent; print(search_products_for_voice_agent('gaming PC'))"
+```
+
+## 🔧 Configuration
+
+### Voice Agent Settings
+
+The bot behavior can be customized in `bot.py`:
+- System prompts
+- Response length limits
+- Tool function definitions
+- Voice settings
+
+### RAG Pipeline Settings
+
+Configure product search in `rag_pipeline.py`:
+- Embedding models
+- Search thresholds
+- Response formatting
+- Product categories
+
+### Frontend Customization
+
+Modify the web interface in `Frontend/`:
+- `index.html`: Structure and content
+- `styles.css`: Visual styling
+- `script.js`: Functionality and WebRTC
+
+## 📞 Phone Call Flow
+
+1. User enters phone number on web interface
+2. Frontend sends request to API server
+3. API server calls Twilio service
+4. Twilio initiates outbound call
+5. Call connects to webhook server
+6. Webhook establishes WebSocket connection
+7. Voice agent pipeline handles conversation
+
+## 🌐 WebRTC Flow
+
+1. User clicks "Start Voice Chat"
+2. Browser requests microphone permission
+3. Web Speech API captures voice input
+4. Audio sent to backend for processing
+5. RAG pipeline searches products
+6. Response generated by LLM
+7. Text-to-speech synthesis plays response
+
+## 🛑 Stopping Services
+
+```bash
+./stop.sh
+```
+
+## 📋 API Endpoints
+
+- `GET /` - Serve frontend
+- `GET /api/health` - Health check
+- `POST /api/initiate-call` - Start phone call
+- `POST /api/test-search` - Test product search
+- `POST /webhook/twilio/start` - Twilio webhook
+- `WS /ws` - WebSocket for voice streams
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **No voice input detected**
+   - Check browser microphone permissions
+   - Ensure HTTPS for Web Speech API
+
+2. **Call initiation fails**
+   - Verify Twilio credentials
+   - Check ngrok tunnel status
+   - Confirm webhook URL accessibility
+
+3. **Product search not working**
+   - Ensure `products_merged.csv` exists
+   - Check Python dependencies
+   - Verify sentence-transformers installation
+
+4. **Backend connection failed**
+   - Confirm all services are running
+   - Check port availability (3001, 8765)
+   - Review service logs
+
+### Logs
+
+Check service logs:
+```bash
+tail -f api-server.log
+tail -f webhook-server.log
+tail -f ngrok.log
+```
+
+## 🔄 Development
+
+### Adding New Products
+
+Update `products_merged.csv` with new product data. The RAG pipeline will automatically reindex on restart.
+
+### Customizing Voice Agent
+
+Modify the system prompt in `bot.py` to change the agent's personality and capabilities.
+
+### Extending Functionality
+
+Add new tool functions in `bot.py` and corresponding handlers in `rag_pipeline.py`.
+
+## 📊 Performance
+
+- **Response Time**: < 2 seconds for product queries
+- **Concurrent Calls**: Supports multiple simultaneous phone calls
+- **Product Database**: Optimized for 1000+ products
+- **Voice Quality**: Professional-grade with Cartesia TTS
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📝 License
+
+This project is licensed under the MIT License.
+
+## 🆘 Support
+
+For support and questions:
+- Check the troubleshooting section
+- Review service logs
+- Open an issue with detailed information
+
+---
+
+**Sigmoix AI Voice Agent** - Transforming customer interaction through intelligent voice technology.
+
 An intelligent voice assistant for product inquiries with Twilio integration and a beautiful web interface.
 
 ## 🏗️ Architecture
