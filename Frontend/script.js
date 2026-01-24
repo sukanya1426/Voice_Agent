@@ -69,6 +69,20 @@ function initializeModal() {
     // Initialize send button state
     sendQuestionBtn.disabled = true;
     
+    // Initialize phone input validation
+    if (phoneInput) {
+        phoneInput.value = '';
+        validatePhoneInput();
+    }
+    
+    // Ensure phone input section is visible
+    const phoneInputSection = document.querySelector('.phone-input-section');
+    if (phoneInputSection) {
+        phoneInputSection.style.display = 'block';
+        phoneInputSection.style.visibility = 'visible';
+        phoneInputSection.style.opacity = '1';
+    }
+    
     // Add initial welcome message
     addMessageToConversation('assistant', 'Hi! I\'m your Sigmoix AI assistant. I can help you with product inquiries and information about our technology solutions. You can type your question below or request a phone call.');
 }
@@ -189,8 +203,22 @@ async function sendQuestion() {
 // Phone Input Functions
 function validatePhoneInput() {
     const phoneNumber = phoneInput.value.trim();
-    const isValid = phoneNumber.length >= 10 && /^\+?[\d\s\-\(\)]+$/.test(phoneNumber);
+    const isValid = phoneNumber.length >= 10 && /^[\d\s\-\(\)]+$/.test(phoneNumber);
     startCallBtn.disabled = !isValid || isConnected;
+    
+    // Visual feedback for validation
+    if (phoneNumber.length > 0) {
+        if (isValid) {
+            phoneInput.style.borderColor = '#28a745';
+            phoneInput.style.boxShadow = '0 0 0 2px rgba(40, 167, 69, 0.1)';
+        } else {
+            phoneInput.style.borderColor = '#dc3545';
+            phoneInput.style.boxShadow = '0 0 0 2px rgba(220, 53, 69, 0.1)';
+        }
+    } else {
+        phoneInput.style.borderColor = '#ddd';
+        phoneInput.style.boxShadow = 'none';
+    }
 }
 
 // Call Functions
@@ -200,22 +228,35 @@ async function initiateCall() {
         
         if (!phoneNumber) {
             alert('Please enter your phone number');
+            phoneInput.focus();
             return;
         }
 
         if (!isValidPhoneNumber(phoneNumber)) {
-            alert('Please enter a valid phone number');
+            alert('Please enter a valid phone number (10-15 digits)');
+            phoneInput.focus();
             return;
         }
         
+        // Update UI to show loading state
         startCallBtn.disabled = true;
-        startCallBtn.textContent = 'Connecting...';
+        startCallBtn.innerHTML = `
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="2">
+                    <animate attributeName="r" values="2;8;2" dur="1s" repeatCount="indefinite"/>
+                    <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/>
+                </circle>
+            </svg>
+            Connecting...
+        `;
         connectionInfo.style.display = 'block';
-        assistantStatus.textContent = 'Initiating call...';
+        assistantStatus.textContent = 'Initiating call to your number...';
         
         // Format phone number with country code
         const selectedCountryCode = countryCode.value;
         const formattedPhoneNumber = formatPhoneNumberForCall(phoneNumber, selectedCountryCode);
+        
+        console.log('Initiating call to:', formattedPhoneNumber);
         
         // Make API call to backend to initiate Twilio call
         const response = await fetch(`${CONFIG.BACKEND_URL}/api/initiate-call`, {
@@ -228,6 +269,10 @@ async function initiateCall() {
             })
         });
         
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const result = await response.json();
         
         if (result.success) {
@@ -238,7 +283,17 @@ async function initiateCall() {
         
     } catch (error) {
         console.error('Call initiation failed:', error);
-        handleCallError(error.message);
+        
+        let errorMessage = 'Failed to initiate call. ';
+        if (error.message.includes('fetch')) {
+            errorMessage += 'Please check that the backend server is running on port 3001.';
+        } else if (error.message.includes('E.164')) {
+            errorMessage += 'Please use international format (+1234567890).';
+        } else {
+            errorMessage += error.message;
+        }
+        
+        handleCallError(errorMessage);
     }
 }
 

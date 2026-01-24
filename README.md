@@ -2,6 +2,63 @@
 
 A comprehensive voice assistant system that helps customers find technology products through natural conversation. The agent integrates multiple AI services including speech-to-text, large language models, text-to-speech, and a RAG (Retrieval-Augmented Generation) pipeline for product search.
 
+## 🚀 Quick Start - Running the Application
+
+### Prerequisites
+- Python 3.8+ with virtual environment
+- Node.js 16+
+- All API keys configured in `.env` file
+
+### Step-by-Step Run Instructions
+
+1. **Navigate to Backend Directory**
+   ```bash
+   cd Voice_Agent/Backend
+   ```
+
+2. **Activate Virtual Environment** 
+   ```bash
+   source ../venv/bin/activate  # macOS/Linux
+   # venv\Scripts\activate      # Windows
+   ```
+
+3. **Start the Webhook Server** (Terminal 1)
+   ```bash
+   python twilio_webhook_server.py
+   ```
+   This runs on port 8765 and handles voice agent conversations.
+
+4. **Start the API Server** (Terminal 2)
+   ```bash
+   node api-server.js
+   ```
+   This runs on port 3001 and serves the frontend.
+
+5. **Access the Application**
+   - Open: http://localhost:3001
+   - Click "Talk to Agent"  
+   - Enter your phone number
+   - Click "Call Me"
+   - Answer your phone to talk with the AI!
+
+### Required Services Status
+- ✅ **API Server**: http://localhost:3001 (Frontend + Call API)
+- ✅ **Webhook Server**: http://localhost:8765 (Voice Agent)
+- ✅ **Ngrok Tunnel**: https://your-domain.ngrok-free.dev (Twilio Webhooks)
+
+### Testing the Integration
+```bash
+# Test Twilio configuration
+python test_twilio_integration.py
+
+# Test a direct API call
+curl -X POST http://localhost:3001/api/initiate-call \
+  -H "Content-Type: application/json" \
+  -d '{"phoneNumber": "+8801234567890"}'
+```
+
+**Note**: Both API server and webhook server must be running for calls to work properly.
+
 ## 🏗️ Architecture
 
 The voice agent follows a modern pipeline architecture:
