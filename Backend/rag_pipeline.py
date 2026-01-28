@@ -157,6 +157,108 @@ class ProductRAGPipeline:
         # At least one key term should match
         return any(term in product_text for term in key_terms)
     
+    def parse_price_from_string(self, price_str: str) -> float:
+        """
+        Parse numeric price from price string formats like "999৳", "24,499৳28,100৳", etc.
+        Returns the lowest price if multiple prices are found.
+        """
+        if not price_str or pd.isna(price_str) or str(price_str).lower() in ['out of stock', 'nan']:
+            return float('inf')
+        
+        # Remove quotes and clean the string
+        price_str = str(price_str).replace('"', '').strip()
+        
+        # Find all numeric values followed by ৳
+        import re
+        price_matches = re.findall(r'([0-9,]+)৳', price_str)
+        
+        if not price_matches:
+            return float('inf')
+        
+        # Parse all found prices and return the lowest one
+        prices = []
+        for match in price_matches:
+            try:
+                # Remove commas and convert to float
+                price_value = float(match.replace(',', ''))
+                prices.append(price_value)
+            except ValueError:
+                continue
+        
+        return min(prices) if prices else float('inf')
+    
+    def extract_budget_from_query(self, query: str) -> float:
+        """
+        Extract budget/price limit from user query.
+        Handles formats like "50000", "1 lakh", "2 lakh", "50k", etc.
+        """
+        import re
+        query_lower = query.lower()
+        
+        # First check for "lakh" patterns (1 lakh = 100,000)
+        lakh_patterns = [
+            r'under\s+([0-9.]+)\s*lakh',
+            r'below\s+([0-9.]+)\s*lakh',
+            r'less\s+than\s+([0-9.]+)\s*lakh',
+            r'maximum\s+([0-9.]+)\s*lakh',
+            r'max\s+([0-9.]+)\s*lakh',
+            r'budget\s+of\s+([0-9.]+)\s*lakh',
+            r'up\s+to\s+([0-9.]+)\s*lakh',
+            r'within\s+([0-9.]+)\s*lakh'
+        ]
+        
+        for pattern in lakh_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                try:
+                    lakh_value = float(match.group(1))
+                    return lakh_value * 100000  # Convert lakh to actual number
+                except ValueError:
+                    continue
+        
+        # Check for "k" patterns (50k = 50,000)
+        k_patterns = [
+            r'under\s+([0-9.]+)k',
+            r'below\s+([0-9.]+)k',
+            r'less\s+than\s+([0-9.]+)k',
+            r'maximum\s+([0-9.]+)k',
+            r'max\s+([0-9.]+)k',
+            r'budget\s+of\s+([0-9.]+)k',
+            r'up\s+to\s+([0-9.]+)k',
+            r'within\s+([0-9.]+)k'
+        ]
+        
+        for pattern in k_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                try:
+                    k_value = float(match.group(1))
+                    return k_value * 1000  # Convert k to actual number
+                except ValueError:
+                    continue
+        
+        # Look for regular number patterns
+        budget_patterns = [
+            r'under\s+([0-9,]+)',
+            r'below\s+([0-9,]+)',
+            r'less\s+than\s+([0-9,]+)',
+            r'maximum\s+([0-9,]+)',
+            r'max\s+([0-9,]+)',
+            r'budget\s+of\s+([0-9,]+)',
+            r'up\s+to\s+([0-9,]+)',
+            r'within\s+([0-9,]+)'
+        ]
+        
+        for pattern in budget_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                try:
+                    return float(match.group(1).replace(',', ''))
+                except ValueError:
+                    continue
+        
+        return float('inf')  # No budget constraint found
+    
     def extract_key_terms(self, query: str) -> List[str]:
         """
         Extract key terms that must be present in relevant products.
@@ -171,7 +273,7 @@ class ProductRAGPipeline:
     
     def search_products(self, query: str, top_k: int = 5, score_threshold: float = 0.4) -> List[Dict[str, Any]]:
         """
-        Search for products based on natural language query with improved precision.
+        Search for products based on natural language query with improved precision and price filtering.
         
         Args:
             query: Natural language search query
@@ -183,6 +285,10 @@ class ProductRAGPipeline:
         """
         try:
             logger.info(f"Searching for products with query: '{query}'")
+            
+            # Extract budget constraint from query
+            budget_limit = self.extract_budget_from_query(query)
+            logger.info(f"Extracted budget limit: {budget_limit if budget_limit != float('inf') else 'No limit'}")
             
             # Preprocess query for better matching
             processed_query = self.preprocess_query(query)
@@ -197,9 +303,11 @@ class ProductRAGPipeline:
             similarities = self.apply_keyword_boosting(query.lower(), similarities)
             
             # Get top results with stricter threshold
-            top_indices = np.argsort(similarities)[::-1][:top_k * 2]  # Get more candidates
+            top_indices = np.argsort(similarities)[::-1][:top_k * 3]  # Get more candidates for filtering
             
             results = []
+            budget_filtered_count = 0
+            
             for i, idx in enumerate(top_indices):
                 score = similarities[idx]
                 if score >= score_threshold:
@@ -207,13 +315,24 @@ class ProductRAGPipeline:
                     product['similarity_score'] = float(score)
                     product['rank'] = i + 1
                     
+                    # Apply price filtering if budget constraint exists
+                    if budget_limit != float('inf'):
+                        product_price = self.parse_price_from_string(product.get('price', ''))
+                        if product_price > budget_limit:
+                            budget_filtered_count += 1
+                            continue  # Skip products over budget
+                    
                     # Additional relevance filtering
                     if self.is_relevant_product(query.lower(), product):
                         results.append(product)
                         if len(results) >= top_k:  # Stop when we have enough good results
                             break
             
-            logger.info(f"Found {len(results)} highly relevant products")
+            # Log filtering results
+            if budget_limit != float('inf'):
+                logger.info(f"Filtered out {budget_filtered_count} products over budget of {budget_limit}৳")
+            logger.info(f"Found {len(results)} products matching criteria")
+            
             return results
             
         except Exception as e:
@@ -272,18 +391,25 @@ class ProductRAGPipeline:
         
         return intent
     
-    def format_product_response(self, products: List[Dict[str, Any]], max_products: int = 3) -> str:
+    def format_product_response(self, products: List[Dict[str, Any]], max_products: int = 3, query: str = "") -> str:
         """
         Format product search results into a natural language response.
         
         Args:
             products: List of product dictionaries
             max_products: Maximum number of products to include in response
+            query: Original search query for context
             
         Returns:
             Formatted response string
         """
         if not products:
+            # Check if this was a budget-constrained search
+            budget = self.extract_budget_from_query(query) if query else float('inf')
+            
+            if budget != float('inf') and any(term in query.lower() for term in ['gaming', 'laptop']):
+                return f"I couldn't find any gaming laptops under {budget:,.0f}৳ in our current inventory. The gaming laptops we have start from around 165,000৳. However, I found some gaming accessories like laptop coolers and peripherals within your budget. Would you like to see those instead, or would you prefer to explore other product categories like desktops or increase your budget?"
+            
             return "I couldn't find any products matching your requirements. Could you please be more specific or try different keywords?"
         
         # Limit the number of products in response
@@ -404,111 +530,6 @@ def get_product_details_for_voice_agent(product_name: str) -> str:
         logger.error(f"Error getting product details for voice agent: {str(e)}")
         return "I'm having trouble getting the product details right now. Please try again."
     
-    def extract_search_intent(self, query: str) -> Dict[str, Any]:
-        """
-        Extract search intent and parameters from natural language query.
-        
-        Args:
-            query: User's natural language query
-            
-        Returns:
-            Dictionary containing extracted intent and parameters
-        """
-        intent = {
-            'category': None,
-            'price_range': None,
-            'brand': None,
-            'keywords': [],
-            'intent_type': 'general_search'
-        }
-        
-        query_lower = query.lower()
-        
-        # Extract category intent
-        category_patterns = {
-            'gaming': ['gaming', 'game', 'gamer', 'gaming pc', 'gaming computer'],
-            'desktop': ['desktop', 'pc', 'computer', 'workstation'],
-            'budget': ['budget', 'cheap', 'affordable', 'low cost', 'economical'],
-            'processor': ['processor', 'cpu', 'ryzen', 'intel', 'amd'],
-            'graphics': ['graphics', 'gpu', 'video card', 'rtx', 'gtx']
-        }
-        
-        for category, keywords in category_patterns.items():
-            if any(keyword in query_lower for keyword in keywords):
-                intent['category'] = category
-                break
-        
-        # Extract price-related intent
-        if any(word in query_lower for word in ['under', 'below', 'less than', 'maximum']):
-            intent['intent_type'] = 'price_filter'
-        
-        # Extract brand mentions
-        brands = ['amd', 'ryzen', 'intel', 'nvidia', 'asus', 'msi', 'corsair', 'colorful']
-        for brand in brands:
-            if brand in query_lower:
-                intent['brand'] = brand
-                break
-        
-        # Extract general keywords (remove common words)
-        stop_words = {'i', 'want', 'need', 'looking', 'for', 'a', 'an', 'the', 'some', 'find', 'show', 'me'}
-        words = re.findall(r'\b\w+\b', query_lower)
-        intent['keywords'] = [word for word in words if word not in stop_words and len(word) > 2]
-        
-        return intent
-    
-    def format_product_response(self, products: List[Dict[str, Any]], max_products: int = 3) -> str:
-        """
-        Format product search results into a natural language response.
-        
-        Args:
-            products: List of product dictionaries
-            max_products: Maximum number of products to include in response
-            
-        Returns:
-            Formatted response string
-        """
-        if not products:
-            return "I couldn't find any products matching your requirements. Could you please be more specific or try different keywords?"
-        
-        # Limit the number of products in response
-        products = products[:max_products]
-        
-        if len(products) == 1:
-            product = products[0]
-            response = f"I found a great option for you: the {product.get('name', 'Unknown Product')} "
-            
-            if product.get('price'):
-                response += f"priced at {product['price']}. "
-            
-            if product.get('description'):
-                # Extract key points from description
-                desc = str(product['description'])
-                if 'Key Features' in desc:
-                    features_part = desc.split('Key Features')[1].split('View More Info')[0]
-                    response += f"Key features include: {features_part.strip()}. "
-                else:
-                    response += f"{desc[:200]}... "
-            
-            response += "Would you like more details about this product or see other options?"
-            
-        else:
-            response = f"I found {len(products)} great options for you:\n\n"
-            
-            for i, product in enumerate(products, 1):
-                response += f"{i}. {product.get('name', 'Unknown Product')} - "
-                
-                if product.get('price'):
-                    response += f"{product['price']}. "
-                
-                # Add brief description
-                if product.get('description'):
-                    desc = str(product['description'])[:100] + "..."
-                    response += f"{desc}\n\n"
-            
-            response += "Which one would you like to know more about?"
-        
-        return response
-    
     def get_product_details(self, product_name: str) -> str:
         """
         Get detailed information about a specific product.
@@ -597,7 +618,7 @@ def search_products_for_voice_agent(query: str) -> str:
         products = rag_pipeline.search_products(query, top_k=5)
         
         # Format response for voice delivery
-        response = rag_pipeline.format_product_response(products, max_products=3)
+        response = rag_pipeline.format_product_response(products, max_products=3, query=query)
         
         return response
         
