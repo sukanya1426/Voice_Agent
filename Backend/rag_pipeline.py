@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Tuple
 import os
 from loguru import logger
 from sklearn.metrics.pairwise import cosine_similarity
+from datetime import datetime
 
 
 class ProductRAGPipeline:
@@ -29,6 +30,9 @@ class ProductRAGPipeline:
         self.products_df = None
         self.embeddings = None
         self.product_descriptions = []
+        self.conversation_memory = []  # Store last 10 conversations
+        self.main_categories = set()  # Will be populated dynamically
+        self.accessory_keywords = ['display', 'screen', 'stand', 'cooler', 'pad', 'case', 'bag', 'charger', 'battery', 'keyboard', 'mouse', 'accessory', 'cable']
         
         logger.info(f"Initializing RAG pipeline with model: {model_name}")
         self.load_and_process_products()
@@ -40,10 +44,13 @@ class ProductRAGPipeline:
             self.products_df = pd.read_csv(self.csv_path)
             logger.info(f"Loaded {len(self.products_df)} products from {self.csv_path}")
             
-            # Limit to first 1000 products to avoid memory issues
-            if len(self.products_df) > 1000:
-                logger.info("Limiting to first 1000 products to avoid memory issues")
-                self.products_df = self.products_df.head(1000)
+            # Analyze categories dynamically
+            self._analyze_categories()
+            
+            # Limit to first 2000 products to avoid memory issues (increased for better coverage)
+            if len(self.products_df) > 2000:
+                logger.info("Limiting to first 2000 products to avoid memory issues")
+                self.products_df = self.products_df.head(2000)
             
             # Create comprehensive product descriptions for better search
             self.product_descriptions = []
@@ -98,6 +105,53 @@ class ProductRAGPipeline:
             logger.error(f"Error initializing RAG pipeline: {str(e)}")
             raise
     
+    def _analyze_categories(self):
+        """Analyze and categorize product categories dynamically."""
+        try:
+            categories = self.products_df['category'].value_counts()
+            logger.info(f"Found {len(categories)} unique categories")
+            
+            # Identify main product categories (not accessories)
+            for category, count in categories.items():
+                if pd.isna(category):
+                    continue
+                category_lower = str(category).lower()
+                
+                # Skip accessory categories
+                if any(keyword in category_lower for keyword in self.accessory_keywords):
+                    continue
+                    
+                # Main product categories
+                if any(main_cat in category_lower for main_cat in ['laptop', 'desktop', 'pc', 'computer', 'gaming', 'workstation']):
+                    self.main_categories.add(category)
+                    
+            logger.info(f"Identified {len(self.main_categories)} main product categories")
+            
+        except Exception as e:
+            logger.error(f"Error analyzing categories: {str(e)}")
+    
+    def add_to_memory(self, query: str, response: str):
+        """Add conversation to memory (keep last 10)."""
+        self.conversation_memory.append({
+            'query': query,
+            'response': response,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        # Keep only last 10 conversations
+        if len(self.conversation_memory) > 10:
+            self.conversation_memory = self.conversation_memory[-10:]
+    
+    def get_conversation_context(self) -> str:
+        """Get recent conversation context for better responses."""
+        if not self.conversation_memory:
+            return ""
+            
+        context = "Recent conversation context:\n"
+        for i, conv in enumerate(self.conversation_memory[-3:], 1):  # Last 3 for context
+            context += f"{i}. User: {conv['query']}\n   AI: {conv['response'][:100]}...\n"
+        return context
+    
     def preprocess_query(self, query: str) -> str:
         """
         Preprocess query for better embedding matching.
@@ -138,8 +192,34 @@ class ProductRAGPipeline:
     
     def is_relevant_product(self, query: str, product: Dict[str, Any]) -> bool:
         """
-        Additional relevance check to filter out irrelevant products.
+        Advanced relevance check to filter out irrelevant products and prioritize main categories.
         """
+        query_lower = query.lower()
+        product_category = str(product.get('category', '')).lower()
+        product_name = str(product.get('name', '')).lower()
+        
+        # Strong filter for laptop searches - exclude clear accessories
+        if 'laptop' in query_lower:
+            # Exclude obvious laptop accessories
+            laptop_accessory_terms = [
+                'desk', 'stand', 'cooling', 'cooler', 'pad', 'case', 'bag', 'sleeve', 
+                'charger', 'battery', 'keyboard', 'mouse', 'screen', 'display',
+                'adapter', 'cable', 'dock', 'hub', 'riser', 'tray', 'portable folding',
+                'laptop desk', 'laptop stand', 'laptop cooler', 'folding'
+            ]
+            
+            if any(term in product_name for term in laptop_accessory_terms):
+                return False\n        \n        # Check if this is an accessory when user wants main product
+        if any(main_term in query_lower for main_term in ['laptop', 'desktop', 'pc', 'computer']):
+            # If user is looking for main product, deprioritize accessories
+            if any(acc_keyword in product_name or acc_keyword in product_category 
+                   for acc_keyword in self.accessory_keywords):
+                return False
+                
+        # Prioritize products from main categories
+        if product.get('category') in self.main_categories:
+            return True
+            
         # Extract key terms from query
         key_terms = self.extract_key_terms(query)
         
@@ -148,8 +228,8 @@ class ProductRAGPipeline:
         
         # Check if product matches key terms
         product_text = ' '.join([
-            str(product.get('name', '')),
-            str(product.get('category', '')),
+            product_name,
+            product_category,
             str(product.get('description', '')),
             str(product.get('key_features', ''))
         ]).lower()
@@ -261,15 +341,25 @@ class ProductRAGPipeline:
     
     def extract_key_terms(self, query: str) -> List[str]:
         """
-        Extract key terms that must be present in relevant products.
+        Dynamically extract key terms that must be present in relevant products.
         """
-        important_categories = [
-            'gaming', 'budget', 'laptop', 'desktop', 'workstation',
-            'ryzen', 'intel', 'amd', 'nvidia', 'gtx', 'rtx',
-            'processor', 'graphics', 'memory', 'storage'
-        ]
+        query_lower = query.lower()
         
-        return [term for term in important_categories if term in query.lower()]
+        # Product type terms
+        product_types = ['laptop', 'desktop', 'pc', 'computer', 'workstation', 'gaming']
+        
+        # Brand terms
+        brand_terms = ['ryzen', 'intel', 'amd', 'nvidia', 'gtx', 'rtx', 'radeon', 'asus', 'hp', 'lenovo', 'dell']
+        
+        # Feature terms
+        feature_terms = ['gaming', 'budget', 'professional', 'student', 'business']
+        
+        # Spec terms
+        spec_terms = ['processor', 'graphics', 'memory', 'storage', 'ssd', 'hdd', 'ram']
+        
+        all_terms = product_types + brand_terms + feature_terms + spec_terms
+        
+        return [term for term in all_terms if term in query_lower]
     
     def search_products(self, query: str, top_k: int = 5, score_threshold: float = 0.4) -> List[Dict[str, Any]]:
         """
@@ -302,10 +392,12 @@ class ProductRAGPipeline:
             # Apply keyword boosting for exact matches
             similarities = self.apply_keyword_boosting(query.lower(), similarities)
             
-            # Get top results with stricter threshold
-            top_indices = np.argsort(similarities)[::-1][:top_k * 3]  # Get more candidates for filtering
+            # Get more candidates for better filtering
+            top_indices = np.argsort(similarities)[::-1][:top_k * 5]  # Get more candidates for filtering
             
             results = []
+            main_category_results = []
+            other_results = []
             budget_filtered_count = 0
             
             for i, idx in enumerate(top_indices):
@@ -324,9 +416,14 @@ class ProductRAGPipeline:
                     
                     # Additional relevance filtering
                     if self.is_relevant_product(query.lower(), product):
-                        results.append(product)
-                        if len(results) >= top_k:  # Stop when we have enough good results
-                            break
+                        # Prioritize main category products
+                        if product.get('category') in self.main_categories:
+                            main_category_results.append(product)
+                        else:
+                            other_results.append(product)
+            
+            # Combine results prioritizing main categories
+            results = main_category_results[:top_k] + other_results[:max(0, top_k - len(main_category_results))]
             
             # Log filtering results
             if budget_limit != float('inf'):
@@ -393,7 +490,7 @@ class ProductRAGPipeline:
     
     def format_product_response(self, products: List[Dict[str, Any]], max_products: int = 3, query: str = "") -> str:
         """
-        Format product search results into a natural language response.
+        Format product search results into a natural, conversational response.
         
         Args:
             products: List of product dictionaries
@@ -404,44 +501,58 @@ class ProductRAGPipeline:
             Formatted response string
         """
         if not products:
-            # Check if this was a budget-constrained search
+            # More helpful no-results response based on query
             budget = self.extract_budget_from_query(query) if query else float('inf')
+            query_lower = query.lower() if query else ""
             
-            if budget != float('inf') and any(term in query.lower() for term in ['gaming', 'laptop']):
-                return f"I couldn't find any gaming laptops under {budget:,.0f}৳ in our current inventory. The gaming laptops we have start from around 165,000৳. However, I found some gaming accessories like laptop coolers and peripherals within your budget. Would you like to see those instead, or would you prefer to explore other product categories like desktops or increase your budget?"
+            if 'laptop' in query_lower:
+                if budget != float('inf'):
+                    if budget < 50000:
+                        return f"I couldn't find any laptops under {budget:,.0f}৳ in our current inventory. Our budget laptops start from around 50,000৳. Would you like me to show you some options in a slightly higher budget range, or are you interested in desktop computers which might offer better value?"
+                    else:
+                        return f"I couldn't find any laptops under {budget:,.0f}৳ that match your specific requirements. Let me know if you'd like to see our available laptops in different price ranges or if you have other preferences."
+                else:
+                    return "I couldn't find laptops matching your exact requirements. Could you tell me more about what you're looking for? For example, your budget range, intended use like gaming or work, or any specific features?"
             
-            return "I couldn't find any products matching your requirements. Could you please be more specific or try different keywords?"
+            return "I couldn't find products matching those exact requirements. Could you help me understand better what you're looking for? I can search by product type, brand, budget range, or specific features."
         
         # Limit the number of products in response
         products = products[:max_products]
         
+        # Check if we have conversation context
+        context = self.get_conversation_context()
+        follow_up = "Would you like more details about any of these?"
+        
+        if context and len(self.conversation_memory) > 1:
+            follow_up = "Which of these interests you most, or would you like me to search for something else?"
+        
         if len(products) == 1:
             product = products[0]
-            response = f"I found a great option for you: the {product.get('name', 'Unknown Product')} "
+            response = f"I found a great option for you: **{product.get('name', 'Unknown Product')}**"
             
             if product.get('price'):
-                response += f"priced at {product['price']}. "
+                response += f" priced at {product['price']}"
             
-            if product.get('description'):
-                # Extract key points from description
-                desc = str(product['description'])[:200]
-                response += f"{desc}... "
+            if product.get('key_features') and len(str(product.get('key_features', ''))) > 10:
+                # Extract key points from features
+                features = str(product['key_features'])[:150].replace('[\'', '').replace('\']', '').replace('\'', '')
+                response += f". Key features include: {features}..."
             
-            response += "Would you like more details about this product or see other options?"
+            response += f" {follow_up}"
             
         else:
-            response = f"I found {len(products)} great options for you: "
+            response = f"I found {len(products)} great options for you:\n"
             
             for i, product in enumerate(products, 1):
-                response += f"{i}. {product.get('name', 'Unknown Product')}"
+                response += f"{i}. **{product.get('name', 'Unknown Product')}**"
                 
                 if product.get('price'):
                     response += f" - {product['price']}"
                 
                 if i < len(products):
-                    response += ", "
+                    response += "\n"
             
-            response += ". Which one would you like to know more about?"
+            response += f"\n\n{follow_up}"
         
         return response
 
@@ -463,7 +574,7 @@ def initialize_rag_pipeline(csv_path: str = "products_merged.csv"):
 
 def search_products_for_voice_agent(query: str) -> str:
     """
-    Search products and return a voice-friendly response.
+    Search products and return a voice-friendly response with conversation memory.
     This function is called by the voice agent.
     """
     global rag_pipeline
@@ -475,21 +586,29 @@ def search_products_for_voice_agent(query: str) -> str:
         if rag_pipeline is None:
             return "I'm having trouble accessing the product database right now. Please try asking about a specific product or category."
         
-        # Extract intent from query
+        # Get conversation context for better understanding
+        context = rag_pipeline.get_conversation_context()
+        
+        # Extract intent from query with context
         intent = rag_pipeline.extract_search_intent(query)
         logger.info(f"Extracted intent: {intent}")
+        if context:
+            logger.info(f"Using conversation context: {context[:200]}...")
         
         # Search for products
-        products = rag_pipeline.search_products(query, top_k=5)
+        products = rag_pipeline.search_products(query, top_k=5, score_threshold=0.3)  # Lower threshold for better recall
         
         # Format response for voice delivery
-        response = rag_pipeline.format_product_response(products, max_products=3)
+        response = rag_pipeline.format_product_response(products, max_products=3, query=query)
+        
+        # Add to conversation memory
+        rag_pipeline.add_to_memory(query, response)
         
         return response
         
     except Exception as e:
         logger.error(f"Error in voice agent product search: {str(e)}")
-        return f"I'm having trouble searching for products right now. Here's what I know about our catalog: We offer AMD Ryzen gaming PCs starting from around ৳24,000, desktop computers for various budgets, and high-performance systems with RTX graphics cards. Could you be more specific about what you're looking for?"
+        return f"I'm having trouble searching for products right now. Let me help you with our main categories: We have laptops starting from 30,000৳, desktop computers for various budgets, and gaming systems with dedicated graphics cards. Could you tell me more specifically what you're looking for?"
 
 def get_product_details_for_voice_agent(product_name: str) -> str:
     """
