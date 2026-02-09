@@ -1,11 +1,11 @@
-# Core Pipecat framework for voice pipeline
-pipecat-ai==0.0.59
+# Core Pipecat framework with required components (Python 3.10+ required)
+pipecat-ai[deepgram,cartesia,openai,silero]>=0.0.101
 
 # AI services
 loguru
 python-dotenv
 deepgram-sdk>=3.5.0
-openai
+openai>=1.0.0
 cerebras
 cartesia
 
@@ -19,14 +19,16 @@ pandas
 numpy
 scikit-learn
 sentence-transformers
-faiss-cpu
-chromadb
+torch>=2.4.0
+torchaudio>=2.4.0
 
 # Async support
-asyncio
 aiohttp
 
-# For ngrok tunneling
+# Twilio integration
+twilio
+
+# For ngrok tunneling (install globally: brew install ngrok)
 pyngrok
 
 # Additional utilities

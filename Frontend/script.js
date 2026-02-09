@@ -31,8 +31,25 @@ let mediaRecorder = null;
 let recognition = null;
 let synthesis = window.speechSynthesis;
 
+// Session management for conversational memory
+let currentSessionId = null;
+
+// Generate a unique session ID
+function generateSessionId() {
+    return 'web_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+// Get or create session ID
+function getSessionId() {
+    if (!currentSessionId) {
+        currentSessionId = generateSessionId();
+        console.log('🆔 Created new session:', currentSessionId);
+    }
+    return currentSessionId;
+}
+
 // Initialize Event Listeners
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     initializeEventListeners();
     checkBackendConnection();
     initializeModal();
@@ -43,24 +60,24 @@ function initializeEventListeners() {
     talkToAgentBtn.addEventListener('click', openVoiceModal);
     closeModalBtn.addEventListener('click', closeVoiceModal);
     voiceModal.addEventListener('click', handleModalBackdropClick);
-    
+
     // Call Controls
     startCallBtn.addEventListener('click', initiateCall);
-    
+
     // WebRTC Controls
     startWebRTCBtn.addEventListener('click', toggleWebRTC);
-    
+
     // Text Input Controls
     sendQuestionBtn.addEventListener('click', sendQuestion);
     questionInput.addEventListener('keypress', handleQuestionKeypress);
     questionInput.addEventListener('input', handleQuestionInput);
-    
+
     // Phone Input Controls
     phoneInput.addEventListener('input', validatePhoneInput);
-    
+
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeyboardShortcuts);
-    
+
     // Initialize Web Speech API
     initializeWebSpeech();
 }
@@ -68,13 +85,13 @@ function initializeEventListeners() {
 function initializeModal() {
     // Initialize send button state
     sendQuestionBtn.disabled = true;
-    
+
     // Initialize phone input validation
     if (phoneInput) {
         phoneInput.value = '';
         validatePhoneInput();
     }
-    
+
     // Ensure phone input section is visible
     const phoneInputSection = document.querySelector('.phone-input-section');
     if (phoneInputSection) {
@@ -82,7 +99,7 @@ function initializeModal() {
         phoneInputSection.style.visibility = 'visible';
         phoneInputSection.style.opacity = '1';
     }
-    
+
     // Add initial welcome message
     addMessageToConversation('assistant', 'Hi! I\'m your Sigmoix AI assistant. I can help you with product inquiries and information about our technology solutions. You can type your question below or request a phone call.');
 }
@@ -91,10 +108,10 @@ function initializeModal() {
 function openVoiceModal() {
     voiceModal.classList.add('active');
     document.body.style.overflow = 'hidden';
-    
+
     // Reset modal state
     resetModalState();
-    
+
     // Add welcome animation
     setTimeout(() => {
         avatarCircle.style.animation = 'pulse 2s ease-in-out infinite';
@@ -104,12 +121,12 @@ function openVoiceModal() {
 function closeVoiceModal() {
     voiceModal.classList.remove('active');
     document.body.style.overflow = '';
-    
+
     // Clean up any active calls
     if (currentCall) {
         endCall();
     }
-    
+
     hideAudioPlayer();
 }
 
@@ -131,7 +148,7 @@ function resetModalState() {
     startCallBtn.disabled = false;
     assistantStatus.textContent = 'Ready to help you find products';
     isConnected = false;
-    
+
     // Reset text input
     questionInput.value = '';
     sendQuestionBtn.disabled = true;
@@ -156,45 +173,51 @@ async function sendQuestion() {
 
     // Add user message to conversation
     addMessageToConversation('user', question);
-    
+
     // Clear input and disable button temporarily
     questionInput.value = '';
     sendQuestionBtn.disabled = true;
-    
+
     // Show typing indicator
     const typingElement = addMessageToConversation('assistant', 'Thinking...', true);
-    
+
     try {
+        const sessionId = getSessionId();
+        console.log('📤 Sending query with session:', sessionId);
+
         const response = await fetch(`${CONFIG.BACKEND_URL}/api/test-search`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ query: question })
+            body: JSON.stringify({
+                query: question,
+                sessionId: sessionId
+            })
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
-        
+
         // Remove typing indicator
         if (typingElement) {
             typingElement.remove();
         }
-        
+
         // Add assistant response
         addMessageToConversation('assistant', data.response || 'I apologize, but I encountered an error processing your request. Please try again.');
-        
+
     } catch (error) {
         console.error('Error sending question:', error);
-        
+
         // Remove typing indicator
         if (typingElement) {
             typingElement.remove();
         }
-        
+
         // Add error message - fall back to demo mode
         addMessageToConversation('assistant', 'I\'m currently running in demo mode. Here\'s what I can tell you about our products: We offer a wide range of technology solutions including AMD Ryzen gaming PCs, desktop computers, processors, and accessories. Try asking about "gaming PC" or "Ryzen processors" to see our product recommendations!');
     }
@@ -205,7 +228,7 @@ function validatePhoneInput() {
     const phoneNumber = phoneInput.value.trim();
     const isValid = phoneNumber.length >= 10 && /^[\d\s\-\(\)]+$/.test(phoneNumber);
     startCallBtn.disabled = !isValid || isConnected;
-    
+
     // Visual feedback for validation
     if (phoneNumber.length > 0) {
         if (isValid) {
@@ -225,7 +248,7 @@ function validatePhoneInput() {
 async function initiateCall() {
     try {
         const phoneNumber = phoneInput.value.trim();
-        
+
         if (!phoneNumber) {
             alert('Please enter your phone number');
             phoneInput.focus();
@@ -237,7 +260,7 @@ async function initiateCall() {
             phoneInput.focus();
             return;
         }
-        
+
         // Update UI to show loading state
         startCallBtn.disabled = true;
         startCallBtn.innerHTML = `
@@ -251,13 +274,13 @@ async function initiateCall() {
         `;
         connectionInfo.style.display = 'block';
         assistantStatus.textContent = 'Initiating call to your number...';
-        
+
         // Format phone number with country code
         const selectedCountryCode = countryCode.value;
         const formattedPhoneNumber = formatPhoneNumberForCall(phoneNumber, selectedCountryCode);
-        
+
         console.log('Initiating call to:', formattedPhoneNumber);
-        
+
         // Make API call to backend to initiate Twilio call
         const response = await fetch(`${CONFIG.BACKEND_URL}/api/initiate-call`, {
             method: 'POST',
@@ -268,22 +291,22 @@ async function initiateCall() {
                 phoneNumber: formattedPhoneNumber
             })
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             handleCallSuccess(result);
         } else {
             throw new Error(result.error || 'Failed to initiate call');
         }
-        
+
     } catch (error) {
         console.error('Call initiation failed:', error);
-        
+
         let errorMessage = 'Failed to initiate call. ';
         if (error.message.includes('fetch')) {
             errorMessage += 'Please check that the backend server is running on port 3001.';
@@ -292,7 +315,7 @@ async function initiateCall() {
         } else {
             errorMessage += error.message;
         }
-        
+
         handleCallError(errorMessage);
     }
 }
@@ -300,7 +323,7 @@ async function initiateCall() {
 function formatPhoneNumberForCall(phoneNumber, countryCode) {
     // Clean phone number
     let cleanNumber = phoneNumber.replace(/\D/g, '');
-    
+
     // Add country code if not present
     if (!phoneNumber.startsWith('+')) {
         if (countryCode === '+880' && !cleanNumber.startsWith('880')) {
@@ -311,14 +334,14 @@ function formatPhoneNumberForCall(phoneNumber, countryCode) {
             cleanNumber = '44' + cleanNumber;
         }
     }
-    
+
     return '+' + cleanNumber;
 }
 
 function handleCallSuccess(result) {
     currentCall = result.call_sid || 'call_connected';
     isConnected = true;
-    
+
     startCallBtn.innerHTML = `
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
@@ -326,18 +349,18 @@ function handleCallSuccess(result) {
         Call Connected
     `;
     startCallBtn.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
-    
+
     assistantStatus.textContent = 'Call initiated! Please answer your phone to start talking with the Sigmoix AI Voice Agent.';
-    
+
     // Add connected message to conversation
     addMessageToConversation('assistant', result.message || 'Great! I\'ve initiated a call to your number. Please answer your phone to start talking with me!');
-    
+
     // Show audio player
     showAudioPlayer();
-    
+
     // Start call timer
     startCallTimer();
-    
+
     // Add end call button after a short delay
     setTimeout(() => {
         startCallBtn.innerHTML = `
@@ -353,12 +376,12 @@ function handleCallSuccess(result) {
 
 function handleCallError(errorMessage) {
     console.error('Call error:', errorMessage);
-    
+
     assistantStatus.textContent = 'Connection failed. Please try again.';
     connectionInfo.style.display = 'none';
-    
+
     resetModalState();
-    
+
     // Show error message
     addMessageToConversation('assistant', `Sorry, I couldn't connect the call. Error: ${errorMessage}. Please check your backend server and try again.`);
 }
@@ -369,23 +392,23 @@ function endCall() {
         console.log('Ending call:', currentCall);
         currentCall = null;
     }
-    
+
     isConnected = false;
     clearInterval(callTimer);
     hideAudioPlayer();
     resetModalState();
-    
+
     addMessageToConversation('assistant', 'Call ended. Feel free to call again if you need more help finding products!');
 }
 
 // Audio Player Functions
 function showAudioPlayer() {
     audioPlayer.style.display = 'flex';
-    
+
     // Simulate audio time update
     let seconds = 0;
     const timeDisplay = audioPlayer.querySelector('.audio-time');
-    
+
     callTimer = setInterval(() => {
         seconds++;
         const minutes = Math.floor(seconds / 60);
@@ -415,11 +438,11 @@ function startCallTimer() {
 function addMessageToConversation(sender, message, isTyping = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${sender}-message`;
-    
+
     if (isTyping) {
         messageDiv.classList.add('typing-message');
     }
-    
+
     if (sender === 'assistant') {
         messageDiv.innerHTML = `
             <div class="message-avatar">🤖</div>
@@ -435,22 +458,22 @@ function addMessageToConversation(sender, message, isTyping = false) {
             <div class="message-avatar">👤</div>
         `;
     }
-    
+
     conversationArea.appendChild(messageDiv);
-    
+
     // Auto-scroll to bottom
     conversationArea.scrollTop = conversationArea.scrollHeight;
-    
+
     // Add animation
     messageDiv.style.opacity = '0';
     messageDiv.style.transform = 'translateY(20px)';
-    
+
     setTimeout(() => {
         messageDiv.style.transition = 'all 0.3s ease';
         messageDiv.style.opacity = '1';
         messageDiv.style.transform = 'translateY(0)';
     }, 100);
-    
+
     return messageDiv;
 }
 
@@ -475,7 +498,7 @@ function handleKeyboardShortcuts(event) {
     if (event.key === 'Escape' && voiceModal.classList.contains('active')) {
         closeVoiceModal();
     }
-    
+
     // Ctrl/Cmd + K to open voice modal
     if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
         event.preventDefault();
@@ -488,19 +511,19 @@ function handleKeyboardShortcuts(event) {
 // Demo Mode Functions (for when backend is not available)
 function simulateCall() {
     console.log('Running in demo mode - simulating call');
-    
+
     setTimeout(() => {
         handleCallSuccess({ callId: 'demo-call-' + Date.now() });
-        
+
         // Add some demo conversation
         setTimeout(() => {
             addMessageToConversation('assistant', 'This is a demo mode. In the real application, you would be connected to our voice assistant via phone call.');
         }, 2000);
-        
+
         setTimeout(() => {
             addMessageToConversation('assistant', 'You can ask me about products like "Show me gaming computers" or "I need a laptop under 50,000 Taka".');
         }, 4000);
-        
+
     }, 1500);
 }
 
@@ -510,17 +533,17 @@ function initializeWebSpeech() {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
         recognition = new SpeechRecognition();
-        
+
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
-        
+
         recognition.onstart = () => {
             console.log('Speech recognition started');
             webrtcStatus.style.display = 'flex';
             avatarCircle.classList.add('listening');
         };
-        
+
         recognition.onresult = (event) => {
             let finalTranscript = '';
             for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -529,17 +552,17 @@ function initializeWebSpeech() {
                     finalTranscript += transcript;
                 }
             }
-            
+
             if (finalTranscript.trim()) {
                 handleVoiceInput(finalTranscript.trim());
             }
         };
-        
+
         recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
             stopWebRTC();
         };
-        
+
         recognition.onend = () => {
             if (webrtcSession) {
                 // Restart recognition if session is active
@@ -570,12 +593,12 @@ async function startWebRTC() {
     try {
         // Request microphone permission
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        
+
         webrtcSession = {
             stream: stream,
             isActive: true
         };
-        
+
         // Update UI
         startWebRTCBtn.innerHTML = `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -584,15 +607,15 @@ async function startWebRTC() {
             Stop Voice Chat
         `;
         startWebRTCBtn.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
-        
+
         // Start speech recognition
         if (recognition) {
             recognition.start();
         }
-        
+
         addMessageToConversation('assistant', 'Voice chat started! I\'m listening. You can ask me about products.');
         assistantStatus.textContent = 'Listening for your voice...';
-        
+
     } catch (error) {
         console.error('Error starting WebRTC:', error);
         if (error.name === 'NotAllowedError') {
@@ -609,11 +632,11 @@ function stopWebRTC() {
         webrtcSession.stream.getTracks().forEach(track => track.stop());
         webrtcSession = null;
     }
-    
+
     if (recognition) {
         recognition.stop();
     }
-    
+
     // Update UI
     startWebRTCBtn.innerHTML = `
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -624,52 +647,55 @@ function stopWebRTC() {
     startWebRTCBtn.style.background = '';
     webrtcStatus.style.display = 'none';
     avatarCircle.classList.remove('listening');
-    
+
     addMessageToConversation('assistant', 'Voice chat ended. You can start again anytime!');
     assistantStatus.textContent = 'Ready to help you find products';
 }
 
 async function handleVoiceInput(transcript) {
     console.log('Voice input received:', transcript);
-    
+
     // Add user message to conversation
     addMessageToConversation('user', transcript);
-    
+
     // Show typing indicator
     const typingElement = addMessageToConversation('assistant', 'Processing...', true);
-    
+
     try {
-        // Send to backend for processing
+        const sessionId = getSessionId();
         const response = await fetch(`${CONFIG.BACKEND_URL}/api/test-search`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ query: transcript })
+            body: JSON.stringify({
+                query: transcript,
+                sessionId: sessionId
+            })
         });
-        
+
         const data = await response.json();
-        
+
         // Remove typing indicator
         if (typingElement) {
             typingElement.remove();
         }
-        
+
         const assistantResponse = data.response || 'I apologize, but I encountered an error processing your request.';
-        
+
         // Add assistant response to conversation
         addMessageToConversation('assistant', assistantResponse);
-        
+
         // Use text-to-speech to speak the response
         speakResponse(assistantResponse);
-        
+
     } catch (error) {
         console.error('Error processing voice input:', error);
-        
+
         if (typingElement) {
             typingElement.remove();
         }
-        
+
         const errorMessage = 'I\'m having trouble processing your request. Please try again or use the text input.';
         addMessageToConversation('assistant', errorMessage);
         speakResponse(errorMessage);
@@ -678,27 +704,27 @@ async function handleVoiceInput(transcript) {
 
 function speakResponse(text) {
     if (!synthesis) return;
-    
+
     // Cancel any ongoing speech
     synthesis.cancel();
-    
+
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = synthesis.getVoices().find(voice => 
+    utterance.voice = synthesis.getVoices().find(voice =>
         voice.name.includes('Female') || voice.name.includes('Karen') || voice.name.includes('Samantha')
     ) || synthesis.getVoices()[0];
-    
+
     utterance.rate = 0.9;
     utterance.pitch = 1.0;
     utterance.volume = 0.8;
-    
+
     utterance.onstart = () => {
         avatarCircle.classList.add('speaking');
     };
-    
+
     utterance.onend = () => {
         avatarCircle.classList.remove('speaking');
     };
-    
+
     synthesis.speak(utterance);
 }
 
@@ -713,12 +739,12 @@ function isValidPhoneNumber(phoneNumber) {
 function isValidPhoneNumber(phoneNumber) {
     // Remove all non-digit characters for validation
     const cleanNumber = phoneNumber.replace(/\D/g, '');
-    
+
     // Check if it's a valid length (10-15 digits)
     if (cleanNumber.length < 10 || cleanNumber.length > 15) {
         return false;
     }
-    
+
     // Basic phone number pattern
     const phonePattern = /^[\+]?[\d\s\-\(\)]{10,}$/;
     return phonePattern.test(phoneNumber);
@@ -728,11 +754,11 @@ function formatPhoneNumber(phoneNumber) {
     // Basic phone number formatting
     const cleaned = phoneNumber.replace(/\D/g, '');
     const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
-    
+
     if (match) {
         return `+1 (${match[1]}) ${match[2]}-${match[3]}`;
     }
-    
+
     return phoneNumber;
 }
 
