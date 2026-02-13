@@ -53,11 +53,14 @@ async def twilio_webhook_start(request: Request):
     try:
         # Get the request data
         form_data = await request.form()
+        query_params = dict(request.query_params)
+        language = query_params.get("language", "en")
+        
         call_sid = form_data.get("CallSid", "")
         from_number = form_data.get("From", "")
         to_number = form_data.get("To", "")
         
-        logger.info(f"Incoming call - CallSid: {call_sid}, From: {from_number}, To: {to_number}")
+        logger.info(f"Incoming call - CallSid: {call_sid}, From: {from_number}, To: {to_number}, Language: {language}")
         
         # Get the base URL for WebSocket connection
         base_url = os.getenv("PIPECAT_PROXY_HOST", "localhost:8765")
@@ -76,9 +79,11 @@ async def twilio_webhook_start(request: Request):
             <Parameter name="CallSid" value="{call_sid}" />
             <Parameter name="From" value="{from_number}" />
             <Parameter name="To" value="{to_number}" />
+            <Parameter name="Language" value="{language}" />
         </Stream>
     </Connect>
 </Response>"""
+
         
         logger.info(f"Returning TwiML with WebSocket URL: {ws_url}")
         

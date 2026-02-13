@@ -18,6 +18,7 @@ Run the bot using::
 """
 
 import os
+import json
 import asyncio
 from datetime import datetime
 
@@ -52,11 +53,16 @@ initialize_rag_pipeline()
 logger.info("RAG pipeline initialized successfully")
 
 
-async def run_bot(transport: BaseTransport):
-    logger.info(f"Starting Sigmoix AI Voice Agent")
+async def run_bot(transport: BaseTransport, language: str = 'en'):
+    logger.info(f"Starting Sigmoix AI Voice Agent with language: {language}")
 
     # STT: transcribe caller audio to text (Deepgram)
-    stt = DeepgramSTTService(api_key=os.getenv("DEEPGRAM_API_KEY"))
+    # Set language to Bengali if requested
+    stt_language = "bn" if language == "bn" else "en-US"
+    stt = DeepgramSTTService(
+        api_key=os.getenv("DEEPGRAM_API_KEY"),
+        language=stt_language
+    )
 
     # TTS: convert assistant text to speech (Cartesia)
     tts = CartesiaTTSService(
@@ -90,14 +96,18 @@ async def run_bot(transport: BaseTransport):
     messages = [
         {
             "role": "system",
-            "content": f"""You are Sophia, a high-energy, persuasive, and expert Sales Agent at Sigmoix AI. Your goal is to guide customers through our premium technology catalog and help them make a purchase they'll love.
+            "content": f"""You are Sophia, the Sigmoix AI Product Expert - a very cheerful, high-energy, and enthusiastic shopping assistant who genuinely loves helping customers find the perfect tech!
 
-SALES AGENT PERSONALITY:
-- Confident, professional, and results-oriented
-- Warm and helpful, yet focused on closing the deal by finding the perfect fit
-- Enthusiastic about the value and quality of Sigmoix AI products
-- Uses subtle sales techniques like "excellent choice," "this is one of our best-sellers," or "great value for this price"
-- Proactive in guiding the customer towards a decision
+SHOPPING ASSISTANT PERSONALITY:
+- Extremely cheerful, warm, and professional.
+- Use enthusiastic phrases like "I'd be absolutely delighted to help!", "That's a fantastic choice!", or "Ooh, I have something perfect for you!"
+- Your goal is to make the shopping experience fun and effortless.
+
+LANGUAGE SUPPORT:
+- You are fluently multilingual in English and Bengali (Bangla).
+- Always respond in the language the customer uses. If they speak Bengali, you respond in beautiful, cheerful Bengali.
+- For product searches: Mentally use English terms for technical searches to get the best catalog results, but present the findings to the customer in their chosen language with lots of positive energy!
+- Translate or transliterate device names and tech terms (like 'Laptop', 'Processor', 'RTX') into Bengali script when speaking Bengali to make it sound natural and fully localized.
 
 CONVERSATION & SALES STYLE:
 1. **Be Concise for Voice**: You are on a phone call. Keep responses short and snappy.
@@ -260,14 +270,21 @@ Current date and time: {now}""",
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
         logger.info(f"Client connected to Sigmoix AI Voice Agent")
-        # Send the Sigmoix AI greeting when a call connects
+        
+        # Determine greeting language
+        if language == "bn":
+            greeting_text = "Greet the caller in Bengali (Bangla) with high energy and professionalism as Sophia from Sigmoix AI. Say: 'আসসালামু আলাইকুম! আমি সিগময় এআই থেকে সোফিয়া বলছি। আমি আপনাকে আপনার প্রয়োজনীয় টেকনোলজি প্রোডাক্ট খুঁজে পেতে সাহায্য করব। আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?'"
+        else:
+            greeting_text = "Greet the caller in English with high energy and professionalism as Sophia from Sigmoix AI. Say: 'Hi! This is Sophia from Sigmoix AI. I'm here to help you find the perfect technology products with the best value. What can I find for you today?'"
+            
         greeting_message = {
             "role": "system", 
-            "content": "Greet the caller with high energy and professionalism as Sophia from Sigmoix AI. Say: 'Hi! This is Sophia from Sigmoix AI. I'm here to help you find the perfect technology products with the best value. What can I find for you today?'"
+            "content": greeting_text
         }
 
         messages.append(greeting_message)
         await task.queue_frames([context_aggregator.user().get_context_frame()])
+
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
@@ -283,14 +300,31 @@ Current date and time: {now}""",
 
 async def bot(websocket):
     """Main bot entry point for the bot starter."""
-
-    # Use websocket directly - assume Twilio transport
-    logger.info("Using Twilio transport for voice agent")
     
+    # Receive first message from Twilio to get call details and language
+    # First message should be 'start' which contains parameters
+    first_msg = await websocket.receive_text()
+    data = json.loads(first_msg)
+    
+    language = 'en'
+    call_sid = "default_call"
+    stream_sid = "default_stream"
+    
+    if data.get("event") == "start":
+        logger.info(f"Received Twilio start message: {data}")
+        start_payload = data.get("start", {})
+        stream_sid = start_payload.get("streamSid", "default_stream")
+        call_sid = start_payload.get("callSid", "default_call")
+        
+        # Check for our custom Language parameter
+        custom_params = start_payload.get("customParameters", {})
+        language = custom_params.get("Language", "en")
+        logger.info(f"Detected language from Twilio parameters: {language}")
+
     # For Twilio, we'll extract call data from websocket messages if needed
     call_data = {
-        "stream_id": "default_stream",
-        "call_id": "default_call"
+        "stream_id": stream_sid,
+        "call_id": call_sid
     }
 
     # Twilio serializer: attach call identifiers and credentials
@@ -313,8 +347,9 @@ async def bot(websocket):
         ),
     )
 
-    # Start the bot using this transport
-    await run_bot(transport)
+    # Start the bot using this transport and detected language
+    await run_bot(transport, language)
+
 
 
 if __name__ == "__main__":

@@ -38,7 +38,8 @@ app.get('/api/health', (req, res) => {
 // Initiate call endpoint - Updated to use Twilio directly
 app.post('/api/initiate-call', async (req, res) => {
     try {
-        const { phoneNumber } = req.body;
+        const { phoneNumber, language } = req.body;
+        const lang = language || 'en';
 
         // Validate request
         if (!phoneNumber) {
@@ -56,16 +57,18 @@ app.post('/api/initiate-call', async (req, res) => {
             });
         }
 
-        console.log(`📞 Initiating Sigmoix AI Voice Agent call to ${cleanPhoneNumber}...`);
+        console.log(`📞 Initiating Sigmoix AI Voice Agent call to ${cleanPhoneNumber} (Language: ${lang})...`);
 
         // Call the Python Twilio service to initiate the call
         const pythonProcess = spawn(pythonPath, [
             path.join(__dirname, 'twilio_call_service.py'),
-            cleanPhoneNumber
+            cleanPhoneNumber,
+            lang
         ], {
             cwd: __dirname,
             env: { ...process.env }
         });
+
 
         let outputData = '';
         let errorData = '';
@@ -139,10 +142,10 @@ app.get('/api/call-status/:callSid', async (req, res) => {
     }
 });
 
-// Test product search endpoint with session support
+// Test product search endpoint with session support and language translation
 app.post('/api/test-search', async (req, res) => {
     try {
-        const { query, sessionId } = req.body;
+        const { query, sessionId, language } = req.body;
 
         if (!query) {
             return res.status(400).json({
@@ -150,27 +153,66 @@ app.post('/api/test-search', async (req, res) => {
             });
         }
 
-        console.log(`🔍 Search query: "${query}", Session: ${sessionId || 'new'}`);
+        const lang = language || 'en';
+        console.log(`🔍 Search query: "${query}", Session: ${sessionId || 'new'}, Language: ${lang}`);
 
-        // Create a temporary Python script to handle the search with session
+        // Create a temporary Python script to handle the search with session and translation
         const fs = require('fs');
         const tempScriptPath = path.join(__dirname, `temp_search_${Date.now()}.py`);
 
         const pythonScript = `
 import sys
 import json
+import os
+from openai import OpenAI
 sys.path.append('${__dirname.replace(/\\/g, '/')}')
 
 from rag_pipeline import search_products_for_voice_agent
 
 query = """${query.replace(/"/g, '\\"')}"""
 session_id = "${sessionId || ''}"
+language = "${lang}"
+
+# Initialize OpenAI client for translation
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def translate(text, target_lang):
+    try:
+        if target_lang == "en":
+            # Enhanced prompt to ensure numbers and budgets are correctly translated to digits
+            prompt = f"Translate the following Bengali shopping query to English. CRITICAL: Convert all Bengali number words (like 'পঞ্চাশ হাজার') into numeric digits (like '50000'). Return only the translated text: {text}"
+        else:
+            # Enhanced prompt for cheerful shopping assistant tone in Bengali with device name translation
+            prompt = f"Translate the following English tech product information into very cheerful, enthusiastic, and helpful conversational Bengali. Act as a premium shopping assistant. CRITICAL: Translate or transliterate device names and technical terms (like 'Laptop', 'Processor', 'HP') into Bengali script. The entire response should be in natural Bengali script. Keep prices as they are. Return only the translated text: {text}"
+            
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Translation error: {e}", file=sys.stderr)
+        return text
 
 try:
-    result = search_products_for_voice_agent(query, session_id)
+    # 1. Translate Bengali query to English if needed
+    search_query = query
+    if language == "bn":
+        search_query = translate(query, "en")
+        print(f"Translated query: {search_query}", file=sys.stderr)
+
+    # 2. Run RAG pipeline with English query
+    result = search_products_for_voice_agent(search_query, session_id)
+    
+    # 3. Translate RAG response back to Bengali if needed
+    final_response = result
+    if language == "bn":
+        final_response = translate(result, "bn")
+        print(f"Translated response back to Bengali", file=sys.stderr)
+
     print(json.dumps({
         "success": True,
-        "response": result,
+        "response": final_response,
         "sessionId": session_id if session_id else "web_" + str(hash(query))
     }))
 except Exception as e:

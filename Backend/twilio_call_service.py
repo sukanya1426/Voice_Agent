@@ -40,12 +40,13 @@ class TwilioCallService:
         self.client = Client(self.account_sid, self.auth_token)
         logger.info("Twilio Call Service initialized successfully")
     
-    def initiate_call(self, to_number: str) -> Dict:
+    def initiate_call(self, to_number: str, language: str = 'en') -> Dict:
         """
         Initiate an outbound call to the specified number.
         
         Args:
             to_number: The phone number to call (in E.164 format)
+            language: The preferred language ('en' or 'bn')
             
         Returns:
             Dictionary with call information or error details
@@ -56,12 +57,12 @@ class TwilioCallService:
                 return {
                     "success": False,
                     "error": "Phone number must be in E.164 format (e.g., +1234567890)"
-                }
+                 }
             
-            # Construct webhook URL for the voice agent
-            webhook_url = f"https://{self.proxy_host}/webhook/twilio/start"
+            # Construct webhook URL for the voice agent with language param
+            webhook_url = f"https://{self.proxy_host}/webhook/twilio/start?language={language}"
             
-            logger.info(f"Initiating call from {self.twilio_phone_number} to {to_number}")
+            logger.info(f"Initiating call from {self.twilio_phone_number} to {to_number} (Language: {language})")
             logger.info(f"Using webhook URL: {webhook_url}")
             
             # Create the call
@@ -100,17 +101,19 @@ class TwilioCallService:
 if __name__ == "__main__":
     """
     Standalone script to initiate a call from command line or API server
-    Usage: python twilio_call_service.py <phone_number>
+    Usage: python twilio_call_service.py <phone_number> [language]
     """
-    if len(sys.argv) != 2:
-        print("Usage: python twilio_call_service.py <phone_number>")
-        print("Example: python twilio_call_service.py +1234567890")
+    if len(sys.argv) < 2:
+        print("Usage: python twilio_call_service.py <phone_number> [language]")
+        print("Example: python twilio_call_service.py +1234567890 bn")
         sys.exit(1)
     
     phone_number = sys.argv[1]
+    language = sys.argv[2] if len(sys.argv) > 2 else 'en'
+    
     try:
         service = TwilioCallService()
-        result = service.initiate_call(phone_number)
+        result = service.initiate_call(phone_number, language)
         
         if result["success"]:
             print("✅ Call initiated successfully!")

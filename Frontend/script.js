@@ -67,6 +67,12 @@ function initializeEventListeners() {
     // WebRTC Controls
     startWebRTCBtn.addEventListener('click', toggleWebRTC);
 
+    // Language Toggle
+    document.querySelectorAll('input[name="language"]').forEach(input => {
+        input.addEventListener('change', handleLanguageChange);
+    });
+
+
     // Text Input Controls
     sendQuestionBtn.addEventListener('click', sendQuestion);
     questionInput.addEventListener('keypress', handleQuestionKeypress);
@@ -101,7 +107,12 @@ function initializeModal() {
     }
 
     // Add initial welcome message
-    addMessageToConversation('assistant', 'Hi! I\'m your Sigmoix AI assistant. I can help you with product inquiries and information about our technology solutions. You can type your question below or request a phone call.');
+    const lang = document.querySelector('input[name="language"]:checked').value;
+    const welcomeMsg = lang === 'bn'
+        ? "আসসালামু আলাইকুম! আমি সিগময় এআই থেকে সোফিয়া বলছি। আপনার জন্য সেরা টেকনোলজি খুঁজে পেতে আমি আজ খুবই আনন্দিত! আমি আপনাকে কীভাবে সাহায্য করতে পারি?"
+        : "Hi there! I'm Sophia, your super cheerful Sigmoix AI shopping assistant! I'm so excited to help you find the perfect gadgets today. What can I help you find?";
+
+    addMessageToConversation('assistant', welcomeMsg);
 }
 
 // Modal Functions
@@ -167,6 +178,23 @@ function handleQuestionInput() {
     sendQuestionBtn.disabled = !hasText;
 }
 
+function handleLanguageChange(event) {
+    const lang = event.target.value;
+    console.log('🌐 Language changed to:', lang);
+
+    // Update speech recognition if supported
+    if (recognition) {
+        recognition.lang = lang === 'bn' ? 'bn-BD' : 'en-US';
+        console.log('🎙️ Recognition language set to:', recognition.lang);
+
+        // If currently listening, we need to restart to apply change
+        if (webrtcSession && webrtcSession.isActive) {
+            recognition.stop();
+            // recognition.onend will restart it with new lang
+        }
+    }
+}
+
 async function sendQuestion() {
     const question = questionInput.value.trim();
     if (!question) return;
@@ -183,7 +211,8 @@ async function sendQuestion() {
 
     try {
         const sessionId = getSessionId();
-        console.log('📤 Sending query with session:', sessionId);
+        const selectedLang = document.querySelector('input[name="language"]:checked').value;
+        console.log('📤 Sending query with session:', sessionId, 'Language:', selectedLang);
 
         const response = await fetch(`${CONFIG.BACKEND_URL}/api/test-search`, {
             method: 'POST',
@@ -192,9 +221,11 @@ async function sendQuestion() {
             },
             body: JSON.stringify({
                 query: question,
-                sessionId: sessionId
+                sessionId: sessionId,
+                language: selectedLang
             })
         });
+
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -282,15 +313,18 @@ async function initiateCall() {
         console.log('Initiating call to:', formattedPhoneNumber);
 
         // Make API call to backend to initiate Twilio call
+        const selectedLang = document.querySelector('input[name="language"]:checked').value;
         const response = await fetch(`${CONFIG.BACKEND_URL}/api/initiate-call`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                phoneNumber: formattedPhoneNumber
+                phoneNumber: formattedPhoneNumber,
+                language: selectedLang
             })
         });
+
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -663,6 +697,8 @@ async function handleVoiceInput(transcript) {
 
     try {
         const sessionId = getSessionId();
+        const selectedLang = document.querySelector('input[name="language"]:checked').value;
+
         const response = await fetch(`${CONFIG.BACKEND_URL}/api/test-search`, {
             method: 'POST',
             headers: {
@@ -670,9 +706,11 @@ async function handleVoiceInput(transcript) {
             },
             body: JSON.stringify({
                 query: transcript,
-                sessionId: sessionId
+                sessionId: sessionId,
+                language: selectedLang
             })
         });
+
 
         const data = await response.json();
 
@@ -709,9 +747,17 @@ function speakResponse(text) {
     synthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.voice = synthesis.getVoices().find(voice =>
-        voice.name.includes('Female') || voice.name.includes('Karen') || voice.name.includes('Samantha')
-    ) || synthesis.getVoices()[0];
+    utterance.voice = synthesis.getVoices().find(voice => {
+        const lang = document.querySelector('input[name="language"]:checked').value;
+        if (lang === 'bn') {
+            return voice.lang.includes('bn') || voice.lang.includes('bd');
+        }
+        return voice.name.includes('Female') || voice.name.includes('Karen') || voice.name.includes('Samantha');
+    }) || synthesis.getVoices()[0];
+
+    // Language setting for synthesis
+    const selectedLang = document.querySelector('input[name="language"]:checked').value;
+    utterance.lang = selectedLang === 'bn' ? 'bn-BD' : 'en-US';
 
     utterance.rate = 0.9;
     utterance.pitch = 1.0;
@@ -726,6 +772,7 @@ function speakResponse(text) {
     };
 
     synthesis.speak(utterance);
+
 }
 
 // Utility Functions
