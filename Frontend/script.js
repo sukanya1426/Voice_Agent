@@ -105,14 +105,6 @@ function initializeModal() {
         phoneInputSection.style.visibility = 'visible';
         phoneInputSection.style.opacity = '1';
     }
-
-    // Add initial welcome message
-    const lang = document.querySelector('input[name="language"]:checked').value;
-    const welcomeMsg = lang === 'bn'
-        ? "আসসালামু আলাইকুম! আমি সিগময় এআই থেকে সোফিয়া বলছি। আপনার জন্য সেরা টেকনোলজি খুঁজে পেতে আমি আজ খুবই আনন্দিত! আমি আপনাকে কীভাবে সাহায্য করতে পারি?"
-        : "Hi there! I'm Sophia, your super cheerful Sigmoix AI shopping assistant! I'm so excited to help you find the perfect gadgets today. What can I help you find?";
-
-    addMessageToConversation('assistant', welcomeMsg);
 }
 
 // Modal Functions
@@ -479,7 +471,7 @@ function addMessageToConversation(sender, message, isTyping = false) {
 
     if (sender === 'assistant') {
         messageDiv.innerHTML = `
-            <div class="message-avatar">🤖</div>
+            <div class="message-avatar"></div>
             <div class="message-content">
                 <p>${message}</p>
             </div>
@@ -489,7 +481,7 @@ function addMessageToConversation(sender, message, isTyping = false) {
             <div class="message-content">
                 <p>${message}</p>
             </div>
-            <div class="message-avatar">👤</div>
+            <div class="message-avatar"></div>
         `;
     }
 
