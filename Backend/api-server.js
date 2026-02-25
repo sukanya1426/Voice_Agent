@@ -81,33 +81,44 @@ app.post('/api/initiate-call', async (req, res) => {
             errorData += data.toString();
         });
 
+        let responsesSent = false;
+        let timeoutId;
+
         pythonProcess.on('close', (code) => {
-            if (code === 0) {
-                console.log('✅ Call initiated successfully');
-                res.json({
-                    success: true,
-                    message: 'Call initiated successfully! You should receive a call from Sigmoix AI shortly.',
-                    phoneNumber: cleanPhoneNumber,
-                    timestamp: new Date().toISOString()
-                });
-            } else {
-                console.error('❌ Failed to initiate call:', errorData);
-                res.status(500).json({
-                    success: false,
-                    error: 'Failed to initiate call',
-                    details: errorData || 'Unknown error occurred'
-                });
+            if (!responsesSent) {
+                responsesSent = true;
+                clearTimeout(timeoutId);
+                
+                if (code === 0) {
+                    console.log('✅ Call initiated successfully');
+                    res.json({
+                        success: true,
+                        message: 'Call initiated successfully! You should receive a call from Sigmoix AI shortly.',
+                        phoneNumber: cleanPhoneNumber,
+                        timestamp: new Date().toISOString()
+                    });
+                } else {
+                    console.error('❌ Failed to initiate call:', errorData);
+                    res.status(500).json({
+                        success: false,
+                        error: 'Failed to initiate call',
+                        details: errorData || 'Unknown error occurred'
+                    });
+                }
             }
         });
 
         // Add timeout for the process
-        setTimeout(() => {
-            pythonProcess.kill('SIGKILL');
-            res.status(500).json({
-                success: false,
-                error: 'Call initiation timeout',
-                message: 'The call service is taking too long to respond'
-            });
+        timeoutId = setTimeout(() => {
+            if (!responsesSent) {
+                responsesSent = true;
+                pythonProcess.kill('SIGKILL');
+                res.status(500).json({
+                    success: false,
+                    error: 'Call initiation timeout',
+                    message: 'The call service is taking too long to respond'
+                });
+            }
         }, 30000); // 30 seconds timeout
 
     } catch (error) {

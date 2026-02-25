@@ -778,10 +778,10 @@ class ProductRAGPipeline:
         response = f"Here are the details for **{name}**:\n\n"
         
         if product.get('price'):
-            response += f"💰 **Price**: {product['price']}\n"
+            response += f"**Price**: {product['price']}\n"
             
         if product.get('availability'):
-            response += f"📦 **Availability**: {product['availability']}\n"
+            response += f"**Availability**: {product['availability']}\n"
             
         brand = product.get('brand')
         if not brand or str(brand).lower() == 'nan':
@@ -793,19 +793,19 @@ class ProductRAGPipeline:
                     break
         
         if brand and str(brand).lower() != 'nan':
-            response += f"🏢 **Brand**: {brand}\n"
+            response += f"**Brand**: {brand}\n"
             
         if product.get('key_features') and str(product.get('key_features')) != 'nan':
             features = str(product['key_features']).replace('[\'', '').replace('\']', '').replace('\'', '')
-            response += f"\n📋 **Key Features**:\n{features}\n"
+            response += f"\n**Key Features**:\n{features}\n"
             
         if product.get('specifications') and str(product.get('specifications')) != 'nan':
             specs = str(product['specifications'])
             if len(specs) > 20:
-                response += f"\n🔧 **Specifications**: {specs[:300]}...\n"
+                response += f"\n**Specifications**: {specs[:300]}...\n"
                 
         if product.get('warranty_info') and str(product.get('warranty_info')) != 'nan':
-            response += f"🛡️ **Warranty**: {product['warranty_info']}\n"
+            response += f"**Warranty**: {product['warranty_info']}\n"
             
         response += "\nWould you like me to help you with anything else regarding this product?"
         return response
@@ -1038,32 +1038,32 @@ def get_product_details_for_voice_agent(product_name: str) -> str:
             response = f"Here are the detailed specifications for {product.get('name', 'the product')}:\n\n"
             
             if product.get('price'):
-                response += f"💰 Price: {product['price']}\n"
+                response += f"Price: {product['price']}\n"
             
             if product.get('category'):
-                response += f"📂 Category: {product['category']}\n"
+                response += f"Category: {product['category']}\n"
             
             if product.get('specifications'):
                 specs = str(product['specifications'])
                 if specs != 'nan':
-                    response += f"🔧 Specifications: {specs}\n"
+                    response += f"Specifications: {specs}\n"
             
             if product.get('key_features'):
                 features = str(product['key_features'])
                 if features != 'nan':
-                    response += f"⭐ Key Features: {features}\n"
+                    response += f"Key Features: {features}\n"
             
             if product.get('brand'):
-                response += f"🏢 Brand: {product['brand']}\n"
+                response += f"Brand: {product['brand']}\n"
             
             if product.get('availability'):
-                response += f"📦 Availability: {product['availability']}\n"
+                response += f"Availability: {product['availability']}\n"
             
             if product.get('warranty_info'):
-                response += f"🛡️ Warranty: {product['warranty_info']}\n"
+                response += f"Warranty: {product['warranty_info']}\n"
             
             if product.get('url'):
-                response += f"🔗 More info: {product['url']}\n"
+                response += f"More info: {product['url']}\n"
             
             response += "\nWould you like to know anything else about this product or see similar alternatives?"
             
