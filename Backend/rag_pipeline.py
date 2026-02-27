@@ -738,7 +738,7 @@ class ProductRAGPipeline:
         if len(products) == 1:
             product = products[0]
             name = self.simplify_product_name(product.get('name', 'Unknown Product'))
-            response = f"I've found an excellent option that fits your needs perfectly: the **{name}**."
+            response = f"I've found an excellent option that fits your needs perfectly: the {name}."
             
             if product.get('price'):
                 response += f" It's currently priced at {product['price']}."
@@ -760,7 +760,7 @@ class ProductRAGPipeline:
             for i, product in enumerate(products, 1):
                 name = self.simplify_product_name(product.get('name', 'Unknown Product'))
                 price = product.get('price', 'Call for price')
-                response += f"{i}. The **{name}** at {price}."
+                response += f"{i}. The {name} at {price}."
                 
                 if i < len(products):
                     response += "\n"
@@ -775,13 +775,13 @@ class ProductRAGPipeline:
     def format_single_product_details(self, product: Dict[str, Any]) -> str:
         """Format detailed information for a single product with icons and sections."""
         name = product.get('name', 'Product Details')
-        response = f"Here are the details for **{name}**:\n\n"
+        response = f"Here are the details for {name}:\n\n"
         
         if product.get('price'):
-            response += f"**Price**: {product['price']}\n"
+            response += f"Price: {product['price']}\n"
             
         if product.get('availability'):
-            response += f"**Availability**: {product['availability']}\n"
+            response += f"Availability: {product['availability']}\n"
             
         brand = product.get('brand')
         if not brand or str(brand).lower() == 'nan':
@@ -793,19 +793,19 @@ class ProductRAGPipeline:
                     break
         
         if brand and str(brand).lower() != 'nan':
-            response += f"**Brand**: {brand}\n"
+            response += f"Brand: {brand}\n"
             
         if product.get('key_features') and str(product.get('key_features')) != 'nan':
             features = str(product['key_features']).replace('[\'', '').replace('\']', '').replace('\'', '')
-            response += f"\n**Key Features**:\n{features}\n"
+            response += f"\nKey Features:\n{features}\n"
             
         if product.get('specifications') and str(product.get('specifications')) != 'nan':
             specs = str(product['specifications'])
             if len(specs) > 20:
-                response += f"\n**Specifications**: {specs[:300]}...\n"
+                response += f"\nSpecifications: {specs[:300]}...\n"
                 
         if product.get('warranty_info') and str(product.get('warranty_info')) != 'nan':
-            response += f"**Warranty**: {product['warranty_info']}\n"
+            response += f"Warranty: {product['warranty_info']}\n"
             
         response += "\nWould you like me to help you with anything else regarding this product?"
         return response
